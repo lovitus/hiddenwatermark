@@ -149,7 +149,7 @@ export default function App() {
       try {
         // Instantiate using Vite's inlined worker bundler
         const worker = new WatermarkWorker();
-        worker.onmessage = (e) => {
+        worker.onmessage = (e: MessageEvent) => {
           if (e.data.success) {
             resolve(e.data);
           } else {
@@ -157,7 +157,7 @@ export default function App() {
           }
           worker.terminate();
         };
-        worker.onerror = (err) => {
+        worker.onerror = (err: ErrorEvent | Event) => {
           reject(err);
           worker.terminate();
         };
