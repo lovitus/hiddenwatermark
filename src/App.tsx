@@ -11,8 +11,11 @@ import {
   Sparkles,
   CheckCircle,
   Activity,
-  Sliders
+  Sliders,
+  Share2
 } from 'lucide-react';
+import { Share } from '@capacitor/share';
+import { Toast } from '@capacitor/toast';
 
 // Vite inlined worker import
 import WatermarkWorker from './workers/watermark.worker?worker&inline';
@@ -100,6 +103,7 @@ export default function App() {
   // Images state
   const [sourceImgUrl, setSourceImgUrl] = useState<string | null>(null);
   const [watermarkedImgUrl, setWatermarkedImgUrl] = useState<string | null>(null);
+  const [imageMeta, setImageMeta] = useState<{ origW: number; origH: number; procW: number; procH: number } | null>(null);
   
   // Extraction results mapping: { [algoId]: extractedText }
   const [extractionResults, setExtractionResults] = useState<Record<string, string>>({});
@@ -114,9 +118,13 @@ export default function App() {
   const [simResultImgUrl, setSimResultImgUrl] = useState<string | null>(null);
   const [simResults, setSimResults] = useState<Record<string, string>>({});
 
-  // Processing indicators
+  // Processing & progress indicators
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [progressInfo, setProgressInfo] = useState<{ step: number; total: number; algo: string } | null>(null);
+
+  // Toast notification state
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const extractInputRef = useRef<HTMLInputElement>(null);
@@ -143,13 +151,31 @@ export default function App() {
     });
   };
 
-  // Utility: Run background task in Web Worker to prevent UI blocking
-  const runWorkerTask = (data: any): Promise<any> => {
+  // Utility: Show non-blocking Toast notification
+  const showToast = async (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+    try {
+      await Toast.show({
+        text: message,
+        duration: 'short',
+        position: 'bottom'
+      });
+    } catch (e) {
+      // Ignore web fallback error
+    }
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  // Utility: Run background task in Web Worker to prevent UI blocking with real-time progress callbacks
+  const runWorkerTask = (data: any, onProgress?: (progressData: any) => void): Promise<any> => {
     return new Promise((resolve, reject) => {
       try {
-        // Instantiate using Vite's inlined worker bundler
         const worker = new WatermarkWorker();
         worker.onmessage = (e: MessageEvent) => {
+          if (e.data.type === 'progress' && onProgress) {
+            onProgress(e.data);
+            return;
+          }
           if (e.data.success) {
             resolve(e.data);
           } else {
@@ -168,14 +194,16 @@ export default function App() {
     });
   };
 
-  // Utility: Extract ImageData from Image URL with automatic size limiting (max 1024px)
+  // Utility: Extract ImageData from Image URL with automatic size limiting (max 1024px) & metadata tracking
   const getImageDataFromUrl = (url: string): Promise<ImageData> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
+        const origW = img.naturalWidth;
+        const origH = img.naturalHeight;
         const MAX_SIZE = 1024;
-        let width = img.naturalWidth;
-        let height = img.naturalHeight;
+        let width = origW;
+        let height = origH;
 
         // Perform proportional downscaling to prevent out-of-memory errors on high-res camera photos
         if (width > MAX_SIZE || height > MAX_SIZE) {
@@ -187,6 +215,8 @@ export default function App() {
             height = MAX_SIZE;
           }
         }
+
+        setImageMeta({ origW, origH, procW: width, procH: height });
 
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -215,6 +245,35 @@ export default function App() {
     return canvas.toDataURL('image/png');
   };
 
+  // Native share / save handler
+  const handleShareOrSave = async () => {
+    if (!watermarkedImgUrl) return;
+    try {
+      const canShare = await Share.canShare();
+      if (canShare.value) {
+        await Share.share({
+          title: '隐藏盲水印加密图片',
+          text: '使用多维防伪水印大师导出的无痕信息嵌入图片',
+          url: watermarkedImgUrl,
+          dialogTitle: '保存到相册或分享'
+        });
+        showToast('唤起系统分享/保存页面成功', 'success');
+        return;
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        console.warn('Share API non-native or cancelled', e);
+      }
+    }
+
+    // Fallback: Trigger standard download link
+    const link = document.createElement('a');
+    link.href = watermarkedImgUrl;
+    link.download = `watermarked_multi_${Date.now()}.png`;
+    link.click();
+    showToast('图片下载已触发', 'success');
+  };
+
   // Image upload handler
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'source' | 'extract') => {
     const file = e.target.files?.[0];
@@ -226,82 +285,110 @@ export default function App() {
       if (target === 'source') {
         setSourceImgUrl(url);
         setWatermarkedImgUrl(null);
+        showToast('图片加载成功，双向特征提取就绪', 'info');
       } else {
         setWatermarkedImgUrl(url);
         setExtractionResults({});
+        showToast('检测图片已加载', 'info');
       }
     };
     reader.onerror = () => {
-      alert("读取图片文件异常，请重新选择");
+      showToast("读取图片文件异常，请重新选择", "error");
     };
     reader.readAsDataURL(file);
   };
 
-  // Core action: Embed Watermark (Sequentially embeds all selected algorithms)
+  // Core action: Embed Watermark (Sequentially embeds all selected algorithms with live progress)
   const handleEmbed = async () => {
     if (!sourceImgUrl) return;
     if (selectedAlgos.length === 0) {
-      alert("请至少勾选一种隐藏水印方式");
+      showToast("请至少勾选一种隐藏水印方式", "error");
       return;
     }
     setIsProcessing(true);
-    setStatusMsg(`正在按顺序进行多重水印叠加 (${selectedAlgos.join(' -> ')})...`);
+    setProgressInfo({ step: 0, total: selectedAlgos.length, algo: '初始化引擎...' });
+    setStatusMsg(`正在进行多重隐藏水印叠加 (${selectedAlgos.join(' -> ')})...`);
 
     try {
       const imgData = await getImageDataFromUrl(sourceImgUrl);
-      const res = await runWorkerTask({
-        type: 'embed',
-        pixels: imgData.data.buffer,
-        width: imgData.width,
-        height: imgData.height,
-        text: watermarkText,
-        key: securityKey,
-        algorithms: selectedAlgos,
-        strength
-      });
+      const res = await runWorkerTask(
+        {
+          type: 'embed',
+          pixels: imgData.data.buffer,
+          width: imgData.width,
+          height: imgData.height,
+          text: watermarkText,
+          key: securityKey,
+          algorithms: selectedAlgos,
+          strength
+        },
+        (p) => {
+          const algoObj = ALGORITHMS.find(a => a.id === p.algo);
+          setProgressInfo({
+            step: p.step,
+            total: p.total,
+            algo: algoObj ? algoObj.name.split(' ')[0] : p.algo
+          });
+        }
+      );
 
       const outputImgData = new ImageData(new Uint8ClampedArray(res.pixels), imgData.width, imgData.height);
       setWatermarkedImgUrl(imageDataToUrl(outputImgData));
-      setStatusMsg('多重隐藏水印嵌入完成！');
+      showToast('多重隐藏水印叠加融合成功！', 'success');
+      setStatusMsg('嵌入完成！');
       setTimeout(() => setStatusMsg(''), 2000);
     } catch (err: any) {
-      alert(`嵌入失败: ${err.message}`);
+      showToast(`嵌入失败: ${err.message}`, 'error');
       setStatusMsg('');
     } finally {
       setIsProcessing(false);
+      setProgressInfo(null);
     }
   };
 
-  // Core action: Extract Watermark from all selected algorithms
+  // Core action: Extract Watermark from all selected algorithms with live progress
   const handleExtract = async () => {
     if (!watermarkedImgUrl) return;
     if (selectedAlgos.length === 0) {
-      alert("请至少勾选一种检测算法");
+      showToast("请至少勾选一种检测算法", "error");
       return;
     }
     setIsProcessing(true);
+    setProgressInfo({ step: 0, total: selectedAlgos.length, algo: '准备检测...' });
     setStatusMsg('正在启动后台信道逆向特征探测分析...');
 
     try {
       const imgData = await getImageDataFromUrl(watermarkedImgUrl);
-      const res = await runWorkerTask({
-        type: 'extract',
-        pixels: imgData.data.buffer,
-        width: imgData.width,
-        height: imgData.height,
-        key: securityKey,
-        algorithms: selectedAlgos,
-        strength
-      });
+      const res = await runWorkerTask(
+        {
+          type: 'extract',
+          pixels: imgData.data.buffer,
+          width: imgData.width,
+          height: imgData.height,
+          key: securityKey,
+          algorithms: selectedAlgos,
+          strength
+        },
+        (p) => {
+          const algoObj = ALGORITHMS.find(a => a.id === p.algo);
+          setProgressInfo({
+            step: p.step,
+            total: p.total,
+            algo: algoObj ? algoObj.name.split(' ')[0] : p.algo
+          });
+        }
+      );
 
       setExtractionResults(res.results);
-      setStatusMsg('多算法并行探测完成！');
+      showToast('多算法并行探测完成！', 'success');
+      setStatusMsg('探测完成！');
       setTimeout(() => setStatusMsg(''), 2000);
     } catch (err: any) {
-      alert(`提取失败: ${err.message}`);
+      showToast(`提取失败: ${err.message}`, 'error');
       setStatusMsg('');
     } finally {
       setIsProcessing(false);
+      setProgressInfo(null);
     }
   };
 
@@ -309,6 +396,7 @@ export default function App() {
   const handleSimulateAttackAndExtract = async () => {
     if (!watermarkedImgUrl) return;
     setIsProcessing(true);
+    setProgressInfo({ step: 0, total: selectedAlgos.length, algo: '施加模拟攻击...' });
     setStatusMsg('正在生成信道噪声与物理裁剪模拟图...');
 
     try {
@@ -367,19 +455,42 @@ export default function App() {
       }
 
       setSimResultImgUrl(finalImgUrl);
-      setStatusMsg('模拟信道受损图已生成，正在交叉提取多重水印...');
+      setStatusMsg('模拟受损图已生成，正在交叉提取多重水印...');
 
       // 4. Extract from Attacked Image
       const attackedData = await getImageDataFromUrl(finalImgUrl);
-      const res = await runWorkerTask({
-        type: 'extract',
-        pixels: attackedData.data.buffer,
-        width: attackedData.width,
-        height: attackedData.height,
-        key: securityKey,
-        algorithms: selectedAlgos,
-        strength
-      });
+      const res = await runWorkerTask(
+        {
+          type: 'extract',
+          pixels: attackedData.data.buffer,
+          width: attackedData.width,
+          height: attackedData.height,
+          key: securityKey,
+          algorithms: selectedAlgos,
+          strength
+        },
+        (p) => {
+          const algoObj = ALGORITHMS.find(a => a.id === p.algo);
+          setProgressInfo({
+            step: p.step,
+            total: p.total,
+            algo: algoObj ? algoObj.name.split(' ')[0] : p.algo
+          });
+        }
+      );
+
+      setSimResults(res.results);
+      showToast('受损测试与联合提取完成！', 'success');
+      setStatusMsg('模拟测试完成！');
+      setTimeout(() => setStatusMsg(''), 2000);
+    } catch (err: any) {
+      showToast(`测试失败: ${err.message}`, 'error');
+      setStatusMsg('');
+    } finally {
+      setIsProcessing(false);
+      setProgressInfo(null);
+    }
+  };
 
       setSimResults(res.results);
       setStatusMsg('模拟测试与联合提取完成！');
@@ -529,9 +640,23 @@ export default function App() {
                 />
               </div>
             ) : (
-              <div className="preview-container">
-                <img src={sourceImgUrl} className="preview-img" alt="Source" />
-                <button className="remove-btn" onClick={() => setSourceImgUrl(null)}>×</button>
+              <div>
+                <div className="preview-container">
+                  <img src={sourceImgUrl} className="preview-img" alt="Source" />
+                  <button className="remove-btn" onClick={() => setSourceImgUrl(null)}>×</button>
+                </div>
+                {imageMeta && (
+                  <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '6px' }}>
+                      原图尺寸: {imageMeta.origW} × {imageMeta.origH}
+                    </span>
+                    {imageMeta.origW !== imageMeta.procW && (
+                      <span style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', padding: '3px 10px', borderRadius: '6px', fontWeight: '600' }}>
+                        已自动优化为: {imageMeta.procW} × {imageMeta.procH} (防止内存溢出)
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -547,6 +672,31 @@ export default function App() {
             </button>
           )}
 
+          {/* Sub-step Progress Bar Overlay */}
+          {isProcessing && progressInfo && (
+            <div style={{
+              marginTop: '16px',
+              background: 'rgba(15, 23, 42, 0.8)',
+              border: '1px solid rgba(99, 102, 241, 0.4)',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              animation: 'fadeIn 0.2s ease-out'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '8px' }}>
+                <span>正在处理算法 ({progressInfo.step}/{progressInfo.total}): <strong style={{ color: '#818cf8' }}>{progressInfo.algo}</strong></span>
+                <span style={{ fontWeight: '700', color: '#a855f7' }}>{Math.round((progressInfo.step / progressInfo.total) * 100)}%</span>
+              </div>
+              <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${(progressInfo.step / progressInfo.total) * 100}%`,
+                  background: 'linear-gradient(90deg, #6366f1 0%, #a855f7 100%)',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+            </div>
+          )}
+
           {watermarkedImgUrl && (
             <div className="result-box" style={{ marginTop: '24px' }}>
               <div className="result-header" style={{ color: '#34d399' }}>
@@ -556,15 +706,25 @@ export default function App() {
               <div className="preview-container" style={{ margin: '8px 0' }}>
                 <img src={watermarkedImgUrl} className="preview-img" alt="Watermarked" />
               </div>
-              <a 
-                href={watermarkedImgUrl} 
-                download={`watermarked_multi_${Date.now()}.png`}
-                className="btn-primary" 
-                style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 20px rgba(16, 185, 129, 0.3)' }}
-              >
-                <Download size={18} />
-                <span>下载/保存水印图片</span>
-              </a>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                <button 
+                  onClick={handleShareOrSave}
+                  className="btn-primary" 
+                  style={{ flex: 1, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 20px rgba(16, 185, 129, 0.3)' }}
+                >
+                  <Share2 size={18} />
+                  <span>保存到相册 / 系统分享</span>
+                </button>
+                <a 
+                  href={watermarkedImgUrl} 
+                  download={`watermarked_multi_${Date.now()}.png`}
+                  className="btn-primary" 
+                  style={{ width: '52px', padding: 0, justifyContent: 'center', background: 'rgba(255,255,255,0.1)' }}
+                  title="强行作为文件下载"
+                >
+                  <Download size={18} />
+                </a>
+              </div>
             </div>
           )}
         </div>
@@ -645,6 +805,31 @@ export default function App() {
               {isProcessing ? <div className="spinner" /> : <Unlock size={18} />}
               <span>{isProcessing ? '正在并行解析多重物理特征...' : '执行联合反向探测提取'}</span>
             </button>
+          )}
+
+          {/* Sub-step Progress Bar Overlay */}
+          {isProcessing && progressInfo && (
+            <div style={{
+              marginTop: '16px',
+              background: 'rgba(15, 23, 42, 0.8)',
+              border: '1px solid rgba(99, 102, 241, 0.4)',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              animation: 'fadeIn 0.2s ease-out'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '8px' }}>
+                <span>正在探测算法 ({progressInfo.step}/{progressInfo.total}): <strong style={{ color: '#818cf8' }}>{progressInfo.algo}</strong></span>
+                <span style={{ fontWeight: '700', color: '#a855f7' }}>{Math.round((progressInfo.step / progressInfo.total) * 100)}%</span>
+              </div>
+              <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${(progressInfo.step / progressInfo.total) * 100}%`,
+                  background: 'linear-gradient(90deg, #6366f1 0%, #a855f7 100%)',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+            </div>
           )}
 
           {Object.keys(extractionResults).length > 0 && (
@@ -881,6 +1066,34 @@ export default function App() {
         <div className="status-indicator">
           <div className="spinner" style={{ width: '16px', height: '16px', borderLeftColor: '#6366f1' }} />
           <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>{statusMsg}</span>
+        </div>
+      )}
+
+      {/* Non-blocking Toast Notification Banner */}
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: toast.type === 'success' ? '#059669' : toast.type === 'error' ? '#dc2626' : '#4f46e5',
+          color: '#ffffff',
+          padding: '10px 22px',
+          borderRadius: '25px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+          zIndex: 9999,
+          fontSize: '0.85rem',
+          fontWeight: '600',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          animation: 'fadeIn 0.2s ease-out',
+          maxWidth: '90vw'
+        }}>
+          {toast.type === 'success' && <CheckCircle size={16} />}
+          {toast.type === 'error' && <AlertTriangle size={16} />}
+          {toast.type === 'info' && <Sparkles size={16} />}
+          <span>{toast.message}</span>
         </div>
       )}
     </div>

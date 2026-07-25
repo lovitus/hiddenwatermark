@@ -15,7 +15,16 @@ self.onmessage = (e: MessageEvent) => {
       let outputImg = imgData;
       
       // Execute each selected watermark algorithm sequentially
-      for (const algo of algorithms) {
+      for (let i = 0; i < algorithms.length; i++) {
+        const algo = algorithms[i];
+        self.postMessage({
+          type: 'progress',
+          step: i + 1,
+          total: algorithms.length,
+          algo,
+          mode: 'embed'
+        });
+
         switch (algo) {
           case 'lsb':
             outputImg = embedLSB(outputImg, text, key, strength);
@@ -50,7 +59,16 @@ self.onmessage = (e: MessageEvent) => {
       const results: Record<string, string> = {};
 
       // Extract from each selected algorithm in parallel/sequence
-      for (const algo of algorithms) {
+      for (let i = 0; i < algorithms.length; i++) {
+        const algo = algorithms[i];
+        self.postMessage({
+          type: 'progress',
+          step: i + 1,
+          total: algorithms.length,
+          algo,
+          mode: 'extract'
+        });
+
         let resultText = '';
         try {
           switch (algo) {
