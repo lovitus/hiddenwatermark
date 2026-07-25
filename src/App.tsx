@@ -234,6 +234,23 @@ export default function App() {
     });
   };
 
+  // Quick Preset Mode: General (1 algo), Complex (3 algos), Ultimate (5 algos)
+  const applyPresetMode = (mode: 'general' | 'complex' | 'ultimate') => {
+    if (mode === 'general') {
+      setSelectedAlgos(['dct']);
+      setStrength(20);
+      showToast('已一键切换至【一般加密】模式 (单层 DCT 经典抗有损防护)', 'info');
+    } else if (mode === 'complex') {
+      setSelectedAlgos(['dct', 'chroma', 'dwt']);
+      setStrength(30);
+      showToast('已一键切换至【复杂加密】模式 (DCT + 色度Chroma + 小波DWT 3重联合防御)', 'info');
+    } else if (mode === 'ultimate') {
+      setSelectedAlgos(['dct', 'chroma', 'dwt', 'dft', 'dsss']);
+      setStrength(40);
+      showToast('已一键切换至【终极加密】模式 (5大频域无损融合军工级防御全家桶)', 'success');
+    }
+  };
+
   // Utility: Show non-blocking Toast notification
   const showToast = async (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
@@ -698,7 +715,57 @@ export default function App() {
       {activeTab === 'embed' && (
         <div className="glass-container">
           <div className="form-group">
-            <label className="form-label">1. 选择隐藏水印方式 (可多选叠加，LSB不建议与其他频域叠用)</label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+              <label className="form-label" style={{ margin: 0 }}>1. 选择隐藏水印方式 (可手动勾选或一键预设)</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button 
+                  onClick={() => applyPresetMode('general')}
+                  style={{
+                    background: selectedAlgos.length === 1 && selectedAlgos[0] === 'dct' ? '#6366f1' : 'rgba(255,255,255,0.06)',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔒 一般加密
+                </button>
+                <button 
+                  onClick={() => applyPresetMode('complex')}
+                  style={{
+                    background: selectedAlgos.length === 3 && selectedAlgos.includes('dwt') ? '#8b5cf6' : 'rgba(255,255,255,0.06)',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🛡️ 复杂加密 (3层)
+                </button>
+                <button 
+                  onClick={() => applyPresetMode('ultimate')}
+                  style={{
+                    background: selectedAlgos.length === 5 ? 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)' : 'rgba(255,255,255,0.06)',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    boxShadow: selectedAlgos.length === 5 ? '0 0 12px rgba(236, 72, 153, 0.4)' : 'none'
+                  }}
+                >
+                  👑 终极加密 (5层全家桶)
+                </button>
+              </div>
+            </div>
             <div className="algo-grid">
               {ALGORITHMS.map((algo) => {
                 const isSelected = selectedAlgos.includes(algo.id);
@@ -968,7 +1035,29 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>待选检测算法</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>待选检测算法</label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button 
+                      onClick={() => applyPresetMode('general')}
+                      style={{ background: 'rgba(255,255,255,0.06)', color: '#a5b4fc', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      一般解密
+                    </button>
+                    <button 
+                      onClick={() => applyPresetMode('complex')}
+                      style={{ background: 'rgba(255,255,255,0.06)', color: '#c084fc', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      复杂解密
+                    </button>
+                    <button 
+                      onClick={() => applyPresetMode('ultimate')}
+                      style={{ background: 'rgba(236,72,153,0.2)', color: '#f472b6', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      终极解密
+                    </button>
+                  </div>
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {ALGORITHMS.map(a => {
                     const isSelected = selectedAlgos.includes(a.id);
