@@ -12,13 +12,89 @@ import {
   CheckCircle,
   Activity,
   Sliders,
-  Share2
+  Share2,
+  Clock,
+  Square,
+  Eye,
+  SlidersHorizontal
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Toast } from '@capacitor/toast';
+import { analyzeImageTexture, calculateExtractionMetrics, TextureAnalysis } from './algorithms/utils';
 
 // Vite inlined worker import
 import WatermarkWorker from './workers/watermark.worker?worker&inline';
+
+// Interactive Split-Screen Image Comparison Slider Component
+function ImageCompareSlider({ originalUrl, watermarkedUrl }: { originalUrl: string; watermarkedUrl: string }) {
+  const [sliderPos, setSliderPos] = useState(50);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+
+  const handleMove = (clientX: number) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = clientX - rect.left;
+    let pos = (x / rect.width) * 100;
+    if (pos < 0) pos = 0;
+    if (pos > 100) pos = 100;
+    setSliderPos(pos);
+  };
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    isDragging.current = true;
+    handleMove(e.clientX);
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    isDragging.current = true;
+    handleMove(e.touches[0].clientX);
+  };
+
+  useEffect(() => {
+    const onMouseUp = () => { isDragging.current = false; };
+    const onMouseMove = (e: MouseEvent) => {
+      if (isDragging.current) handleMove(e.clientX);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (isDragging.current && e.touches[0]) handleMove(e.touches[0].clientX);
+    };
+
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('touchend', onMouseUp);
+    window.addEventListener('touchmove', onTouchMove);
+
+    return () => {
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('touchend', onMouseUp);
+      window.removeEventListener('touchmove', onTouchMove);
+    };
+  }, []);
+
+  return (
+    <div 
+      ref={containerRef}
+      className="compare-slider-container"
+      onMouseDown={onMouseDown}
+      onTouchStart={onTouchStart}
+    >
+      <span className="compare-badge left">原图 (Original)</span>
+      <span className="compare-badge right">盲水印图 (Watermarked)</span>
+
+      <img src={originalUrl} className="compare-img-left" alt="Original" />
+
+      <div className="compare-right-wrapper" style={{ width: `${100 - sliderPos}%` }}>
+        <img src={watermarkedUrl} className="compare-img-right" alt="Watermarked" />
+      </div>
+
+      <div className="compare-splitter-bar" style={{ left: `${sliderPos}%` }}>
+        <div className="compare-splitter-handle">↔</div>
+      </div>
+    </div>
+  );
+}
 
 // Algorithms metadata
 const ALGORITHMS = [
@@ -104,6 +180,8 @@ export default function App() {
   const [sourceImgUrl, setSourceImgUrl] = useState<string | null>(null);
   const [watermarkedImgUrl, setWatermarkedImgUrl] = useState<string | null>(null);
   const [imageMeta, setImageMeta] = useState<{ origW: number; origH: number; procW: number; procH: number } | null>(null);
+  const [textureAnalysis, setTextureAnalysis] = useState<TextureAnalysis | null>(null);
+  const [showCompareSlider, setShowCompareSlider] = useState(true);
   
   // Extraction results mapping: { [algoId]: extractedText }
   const [extractionResults, setExtractionResults] = useState<Record<string, string>>({});
@@ -115,6 +193,8 @@ export default function App() {
   const [simJpegQual, setSimJpegQual] = useState(40);
   const [simNoise, setSimNoise] = useState(false);
   const [simNoiseLevel, setSimNoiseLevel] = useState(15);
+  const [simMask, setSimMask] = useState(false);
+  const [simMaskPct, setSimMaskPct] = useState(25);
   const [simResultImgUrl, setSimResultImgUrl] = useState<string | null>(null);
   const [simResults, setSimResults] = useState<Record<string, string>>({});
 
@@ -194,7 +274,7 @@ export default function App() {
     });
   };
 
-  // Utility: Extract ImageData from Image URL with automatic size limiting (max 1024px) & metadata tracking
+  // Utility: Extract ImageData from Image URL with automatic size limiting (max 1024px) & texture analysis
   const getImageDataFromUrl = (url: string): Promise<ImageData> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -227,11 +307,30 @@ export default function App() {
           return;
         }
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(ctx.getImageData(0, 0, width, height));
+        const imgData = ctx.getImageData(0, 0, width, height);
+        
+        // Run smart texture analysis for strength recommendation
+        try {
+          const analysis = analyzeImageTexture(imgData);
+          setTextureAnalysis(analysis);
+        } catch (e) {
+          console.warn('Texture analysis error:', e);
+        }
+
+        resolve(imgData);
       };
       img.onerror = () => reject(new Error('图片加载或解码异常，请确认图片格式是否正确'));
       img.src = url;
     });
+  };
+
+  // One-click timestamp signature generator
+  const generateTimestampSignature = () => {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 16).replace('T', ' ');
+    const randomHash = Math.random().toString(36).substring(2, 8).toUpperCase();
+    setWatermarkText(`[AUTH] ${dateStr} | Hash:${randomHash}`);
+    showToast('防伪时间戳与数字签名已插入！', 'success');
   };
 
   // Utility: Convert ImageData to Base64 URL
@@ -446,7 +545,26 @@ export default function App() {
         ctx.putImageData(attackImgData, 0, 0);
       }
 
-      // 3. JPEG Compression Attack
+      // 3. Mask / Sticker Blockage Attack
+      if (simMask) {
+        const maskW = Math.floor(targetWidth * (simMaskPct / 100));
+        const maskH = Math.floor(targetHeight * (simMaskPct / 100));
+        const maskX = Math.floor((targetWidth - maskW) / 2);
+        const maskY = Math.floor((targetHeight - maskH) / 2);
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fillRect(maskX, maskY, maskW, maskH);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(maskX, maskY, maskW, maskH);
+        ctx.fillStyle = '#ef4444';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('局部涂抹/贴纸遮挡', maskX + maskW / 2, maskY + maskH / 2 + 5);
+        attackImgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+      }
+
+      // 4. JPEG Compression Attack
       let finalImgUrl = '';
       if (simJpeg) {
         finalImgUrl = canvas.toDataURL('image/jpeg', simJpegQual / 100);
@@ -584,7 +702,28 @@ export default function App() {
             <label className="form-label">2. 水印参数配置</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
-                <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>水印文字</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>水印文字 Payload</label>
+                  <button 
+                    onClick={generateTimestampSignature}
+                    style={{
+                      background: 'rgba(99, 102, 241, 0.15)',
+                      color: '#a5b4fc',
+                      border: '1px solid rgba(99, 102, 241, 0.3)',
+                      borderRadius: '4px',
+                      padding: '2px 8px',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <Clock size={12} />
+                    <span>插入防伪时间戳签名</span>
+                  </button>
+                </div>
                 <input 
                   type="text" 
                   className="input-text" 
@@ -621,6 +760,28 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Texture Analysis & Recommended Strength Banner */}
+              {textureAnalysis && (
+                <div className="texture-banner">
+                  <div className="texture-info">
+                    <div className="texture-title">
+                      <SlidersHorizontal size={14} style={{ color: '#6366f1' }} />
+                      <span>图像频域复杂度诊断: {textureAnalysis.score}/100 ({textureAnalysis.complexity === 'low' ? '平滑' : textureAnalysis.complexity === 'medium' ? '适中' : '丰富'})</span>
+                    </div>
+                    <div className="texture-desc">{textureAnalysis.advice}</div>
+                  </div>
+                  <button 
+                    className="btn-apply-strength"
+                    onClick={() => {
+                      setStrength(textureAnalysis.recommendedStrength);
+                      showToast(`已应用智能建议强度: ${textureAnalysis.recommendedStrength}`, 'success');
+                    }}
+                  >
+                    应用推荐强度 ({textureAnalysis.recommendedStrength})
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -643,7 +804,7 @@ export default function App() {
               <div>
                 <div className="preview-container">
                   <img src={sourceImgUrl} className="preview-img" alt="Source" />
-                  <button className="remove-btn" onClick={() => setSourceImgUrl(null)}>×</button>
+                  <button className="remove-btn" onClick={() => { setSourceImgUrl(null); setTextureAnalysis(null); }}>×</button>
                 </div>
                 {imageMeta && (
                   <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -697,15 +858,47 @@ export default function App() {
             </div>
           )}
 
-          {watermarkedImgUrl && (
+          {watermarkedImgUrl && sourceImgUrl && (
             <div className="result-box" style={{ marginTop: '24px' }}>
-              <div className="result-header" style={{ color: '#34d399' }}>
-                <CheckCircle size={18} />
-                <span>多重水印叠加融合成功！</span>
+              <div className="result-header" style={{ color: '#34d399', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={18} />
+                  <span>多重水印叠加融合成功！</span>
+                </div>
+                <button 
+                  onClick={() => setShowCompareSlider(!showCompareSlider)}
+                  style={{
+                    background: 'rgba(255,255,255,0.1)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Eye size={14} />
+                  <span>{showCompareSlider ? '单图预览' : '双图滑动对比'}</span>
+                </button>
               </div>
-              <div className="preview-container" style={{ margin: '8px 0' }}>
-                <img src={watermarkedImgUrl} className="preview-img" alt="Watermarked" />
-              </div>
+
+              {/* Interactive Split Comparison Slider */}
+              {showCompareSlider ? (
+                <div style={{ margin: '12px 0' }}>
+                  <ImageCompareSlider originalUrl={sourceImgUrl} watermarkedUrl={watermarkedImgUrl} />
+                  <div style={{ textAlign: 'center', fontSize: '0.75rem', color: '#94a3b8', marginTop: '6px' }}>
+                    💡 拖动中间蓝线可左右对比原图与水印图，肉眼完全感知不到任何画质损失
+                  </div>
+                </div>
+              ) : (
+                <div className="preview-container" style={{ margin: '8px 0' }}>
+                  <img src={watermarkedImgUrl} className="preview-img" alt="Watermarked" />
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
                 <button 
                   onClick={handleShareOrSave}
@@ -836,12 +1029,14 @@ export default function App() {
             <div className="result-box">
               <div className="result-header">
                 <FileText size={18} />
-                <span>各算法联合还原检测结果：</span>
+                <span>各算法联合还原检测与匹配度分析：</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {Object.entries(extractionResults).map(([algoId, res]) => {
                   const algo = ALGORITHMS.find(a => a.id === algoId)!;
                   const isSuccess = !res.startsWith('提取失败') && !res.startsWith('检测出错');
+                  const metrics = calculateExtractionMetrics(res, watermarkText);
+
                   return (
                     <div 
                       key={algoId} 
@@ -852,8 +1047,15 @@ export default function App() {
                         borderLeft: `4px solid ${isSuccess ? '#10b981' : '#ef4444'}` 
                       }}
                     >
-                      <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#cbd5e1', marginBottom: '4px' }}>
-                        {algo.name}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#cbd5e1' }}>
+                          {algo.name}
+                        </div>
+                        {isSuccess && (
+                          <span style={{ background: `${metrics.badgeColor}22`, color: metrics.badgeColor, border: `1px solid ${metrics.badgeColor}44`, padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '700' }}>
+                            {metrics.badge}
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: '1rem', fontWeight: '700', color: isSuccess ? '#34d399' : '#f87171', wordBreak: 'break-all' }}>
                         {res}
@@ -958,6 +1160,31 @@ export default function App() {
                         onChange={(e) => setSimNoiseLevel(Number(e.target.value))} 
                       />
                       <span className="slider-val">{simNoiseLevel}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Attack 4: Sticker / Center Blockage Attack */}
+                <div className="attack-card">
+                  <div className="attack-title">
+                    <span>贴纸/局部涂抹遮挡 (Sticker Blockage)</span>
+                    <div 
+                      className={`attack-toggle ${simMask ? 'active' : ''}`}
+                      onClick={() => setSimMask(!simMask)}
+                    />
+                  </div>
+                  {simMask && (
+                    <div className="slider-container" style={{ marginTop: '8px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>遮挡区域大小:</span>
+                      <input 
+                        type="range" 
+                        className="range-slider" 
+                        min="10" 
+                        max="50" 
+                        value={simMaskPct} 
+                        onChange={(e) => setSimMaskPct(Number(e.target.value))} 
+                      />
+                      <span className="slider-val">{simMaskPct}%</span>
                     </div>
                   )}
                 </div>

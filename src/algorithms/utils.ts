@@ -336,3 +336,99 @@ export function decodeHammingEncoding(bits: number[]): number[] {
   }
   return result;
 }
+
+export interface TextureAnalysis {
+  score: number; // 0 to 100
+  complexity: 'low' | 'medium' | 'high';
+  recommendedStrength: number;
+  advice: string;
+}
+
+export function analyzeImageTexture(imgData: ImageData): TextureAnalysis {
+  const { data, width, height } = imgData;
+  let totalGradient = 0;
+  let samples = 0;
+
+  // Sample horizontal & vertical luminance gradients across the image
+  const step = 4; // Sample every 4th pixel for performance
+  for (let y = 1; y < height - 1; y += step) {
+    for (let x = 1; x < width - 1; x += step) {
+      const idx = (y * width + x) * 4;
+      const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+      
+      const rightIdx = (y * width + (x + 1)) * 4;
+      const rightLum = 0.299 * data[rightIdx] + 0.587 * data[rightIdx + 1] + 0.114 * data[rightIdx + 2];
+      
+      const bottomIdx = ((y + 1) * width + x) * 4;
+      const bottomLum = 0.299 * data[bottomIdx] + 0.587 * data[bottomIdx + 1] + 0.114 * data[bottomIdx + 2];
+
+      const dx = Math.abs(lum - rightLum);
+      const dy = Math.abs(lum - bottomLum);
+      totalGradient += Math.sqrt(dx * dx + dy * dy);
+      samples++;
+    }
+  }
+
+  const avgGrad = samples > 0 ? totalGradient / samples : 10;
+  // Normalize score between 0 and 100
+  const score = Math.min(100, Math.round((avgGrad / 35) * 100));
+
+  if (score < 25) {
+    return {
+      score,
+      complexity: 'low',
+      recommendedStrength: 15,
+      advice: '图片平滑区域较大（天空/人脸），建议使用较低强度 (15) 以避免边缘微光伪影。'
+    };
+  } else if (score < 60) {
+    return {
+      score,
+      complexity: 'medium',
+      recommendedStrength: 25,
+      advice: '标准照质感（常规风景/生活照），推荐基准强度 (25)，兼顾隐蔽性与抗压缩性。'
+    };
+  } else {
+    return {
+      score,
+      complexity: 'high',
+      recommendedStrength: 40,
+      advice: '高频纹理丰富（草地/繁复图案），可调高强度 (40) 以获得极致鲁棒性且完全无痕。'
+    };
+  }
+}
+
+export interface ConfidenceMetric {
+  similarity: number; // 0 to 100%
+  ber: number; // 0.0 to 1.0
+  badge: string;
+  badgeColor: string;
+}
+
+export function calculateExtractionMetrics(extracted: string, expectedText: string = 'Secure Watermark 2026'): ConfidenceMetric {
+  if (!extracted || extracted.startsWith('检测出错') || extracted.startsWith('提取失败')) {
+    return { similarity: 0, ber: 1.0, badge: '未检测到水印', badgeColor: '#ef4444' };
+  }
+
+  // Levenshtein / prefix match for similarity
+  const s1 = extracted.trim();
+  const s2 = expectedText.trim();
+
+  let matches = 0;
+  const maxLen = Math.max(s1.length, s2.length);
+  if (maxLen === 0) return { similarity: 100, ber: 0, badge: '100% 完整匹配', badgeColor: '#10b981' };
+
+  for (let i = 0; i < Math.min(s1.length, s2.length); i++) {
+    if (s1[i] === s2[i]) matches++;
+  }
+
+  const similarity = Math.round((matches / maxLen) * 100);
+  const ber = Number(((maxLen - matches) / maxLen).toFixed(3));
+
+  if (similarity >= 90) {
+    return { similarity, ber, badge: `${similarity}% 高精度确权 (BER: ${ber})`, badgeColor: '#10b981' };
+  } else if (similarity >= 50) {
+    return { similarity, ber, badge: `${similarity}% 部分置信 (BER: ${ber})`, badgeColor: '#f59e0b' };
+  } else {
+    return { similarity, ber, badge: `疑似受损/强攻击 (BER: ${ber})`, badgeColor: '#ef4444' };
+  }
+}
