@@ -221,6 +221,8 @@ export default function App() {
     }
   }, [selectedAlgos]);
 
+  const [showForensicModal, setShowForensicModal] = useState(false);
+
   // Toggle algorithm selection (multi-select)
   const handleToggleAlgo = (algoId: string) => {
     setSelectedAlgos(prev => {
@@ -232,6 +234,55 @@ export default function App() {
         return [...prev, algoId];
       }
     });
+  };
+
+  // Exhaustive Extract: Automatically tests all 6 algorithms
+  const handleExhaustiveExtract = async () => {
+    if (!watermarkedImgUrl) return;
+    const allAlgoIds = ALGORITHMS.map(a => a.id);
+    setSelectedAlgos(allAlgoIds);
+    
+    if (!securityKey) {
+      showToast('未输入密钥，将尝试默认无密匙盲解密；若加密时设置了密钥，请填入密钥！', 'info');
+    }
+
+    setIsProcessing(true);
+    setProgressInfo({ step: 0, total: allAlgoIds.length, algo: '启动全算法穷举扫描...' });
+    setStatusMsg('正在进行全算法 (6/6) 穷举特征提取与解密...');
+
+    try {
+      const imgData = await getImageDataFromUrl(watermarkedImgUrl);
+      const res = await runWorkerTask(
+        {
+          type: 'extract',
+          pixels: imgData.data.buffer,
+          width: imgData.width,
+          height: imgData.height,
+          key: securityKey,
+          algorithms: allAlgoIds,
+          strength
+        },
+        (p) => {
+          const algoObj = ALGORITHMS.find(a => a.id === p.algo);
+          setProgressInfo({
+            step: p.step,
+            total: p.total,
+            algo: algoObj ? algoObj.name.split(' ')[0] : p.algo
+          });
+        }
+      );
+
+      setExtractionResults(res.results);
+      showToast('全算法穷举深度探测完成！', 'success');
+      setStatusMsg('穷举探测完成！');
+      setTimeout(() => setStatusMsg(''), 2000);
+    } catch (err: any) {
+      showToast(`穷举提取失败: ${err.message}`, 'error');
+      setStatusMsg('');
+    } finally {
+      setIsProcessing(false);
+      setProgressInfo(null);
+    }
   };
 
   // Quick Preset Mode: General (1 algo), Complex (3 algos), Ultimate (5 algos)
@@ -1109,14 +1160,26 @@ export default function App() {
           </div>
 
           {watermarkedImgUrl && (
-            <button 
-              className="btn-primary" 
-              onClick={handleExtract}
-              disabled={isProcessing}
-            >
-              {isProcessing ? <div className="spinner" /> : <Unlock size={18} />}
-              <span>{isProcessing ? '正在并行解析多重物理特征...' : '执行联合反向探测提取'}</span>
-            </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                className="btn-primary" 
+                onClick={handleExtract}
+                disabled={isProcessing}
+                style={{ flex: 1 }}
+              >
+                {isProcessing ? <div className="spinner" /> : <Unlock size={18} />}
+                <span>{isProcessing ? '正在解析物理特征...' : '探测所选算法'}</span>
+              </button>
+              <button 
+                className="btn-primary" 
+                onClick={handleExhaustiveExtract}
+                disabled={isProcessing}
+                style={{ flex: 1.2, background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 4px 20px rgba(217, 70, 239, 0.3)' }}
+              >
+                {isProcessing ? <div className="spinner" /> : <Search size={18} />}
+                <span>🔍 一键全算法穷举深度扫描</span>
+              </button>
+            </div>
           )}
 
           {/* Sub-step Progress Bar Overlay */}
@@ -1146,9 +1209,30 @@ export default function App() {
 
           {Object.keys(extractionResults).length > 0 && (
             <div className="result-box">
-              <div className="result-header">
-                <FileText size={18} />
-                <span>各算法联合还原检测与匹配度分析：</span>
+              <div className="result-header" style={{ justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <FileText size={18} />
+                  <span>各算法联合还原检测与匹配度分析：</span>
+                </div>
+                <button
+                  onClick={() => setShowForensicModal(true)}
+                  style={{
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <FileText size={13} />
+                  <span>⚖️ Photoshop/第三方复现报告</span>
+                </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {Object.entries(extractionResults).map(([algoId, res]) => {
@@ -1521,6 +1605,112 @@ export default function App() {
           {toast.type === 'error' && <AlertTriangle size={16} />}
           {toast.type === 'info' && <Sparkles size={16} />}
           <span>{toast.message}</span>
+        </div>
+      )}
+
+      {/* Neutral Third-Party Forensic Verification Report Modal */}
+      {showForensicModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(10px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div className="glass-container" style={{
+            maxWidth: '720px',
+            maxHeight: '85vh',
+            overflowY: 'auto',
+            position: 'relative',
+            background: '#0f172a',
+            border: '1px solid rgba(99, 102, 241, 0.4)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                ⚖️ 第三方专业工具 (Photoshop/GIMP/Python) 独立复现与验证指导报告
+              </h3>
+              <button 
+                onClick={() => setShowForensicModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer', padding: '0 8px' }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.85rem', color: '#cbd5e1' }}>
+              <div style={{ background: 'rgba(99, 102, 241, 0.12)', padding: '12px 16px', borderRadius: '8px', borderLeft: '4px solid #6366f1' }}>
+                <strong style={{ color: '#818cf8', fontSize: '0.9rem' }}>公正性与透明度独立验证声明</strong>
+                <p style={{ marginTop: '6px', fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.5', margin: 0 }}>
+                  本软件嵌入的所有盲水印均遵循公开的标准离散余弦变换 (DCT) 与小波变换 (DWT) 数学公式。中立第三方（如司法鉴定中心、独立学术专家、版权裁判机构）无需依赖本软件，即可直接使用通用图像处理软件（Adobe Photoshop / GIMP）或标准 Python 开源库进行独立显影复现与验证。
+                </p>
+              </div>
+
+              <div>
+                <h4 style={{ color: '#38bdf8', marginBottom: '8px', fontWeight: 700, fontSize: '0.95rem' }}>一、 Adobe Photoshop / GIMP 专业图像工具显影复现步骤</h4>
+                <ol style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', margin: 0, lineHeight: '1.5' }}>
+                  <li><strong>Step 1: 载入图片</strong> - 在 Photoshop 中打开包含暗水印的图像文件。</li>
+                  <li><strong>Step 2: 色彩空间转换 (针对色度 DCT 盲水印)</strong> - 点击菜单 <code>图像 (Image)</code> ➔ <code>模式 (Mode)</code> ➔ 选择 <code>Lab 颜色</code>。打开“通道 (Channels)”面板，单独选中 <code>a</code> 或 <code>b</code> 色度通道（或 YCbCr 的 Cr 色差通道）。</li>
+                  <li><strong>Step 3: 色阶高对比度均化 (Levels Equalization)</strong> - 按快捷键 <code>Ctrl + L</code> 调出色阶窗口，将中间灰输入滑块拉至极限（或使用 <code>图像 ➔ 调整 ➔ 均化</code>）。隐藏的频域余弦格栅微光即可在屏幕上清晰显示！</li>
+                  <li><strong>Step 4: 高通滤波 (适用于空域/DSSS/LSB)</strong> - 选择 <code>滤镜 (Filter)</code> ➔ <code>其他 (Other)</code> ➔ <code>高通 (High Pass)</code>，半径设为 1.0~2.0 像素，随后按 <code>Ctrl + Shift + U</code> 去色，水印微纹理即可显露。</li>
+                </ol>
+              </div>
+
+              <div>
+                <h4 style={{ color: '#a855f7', marginBottom: '8px', fontWeight: 700, fontSize: '0.95rem' }}>二、 开源标准 Python / OpenCV 代码独立提取复现</h4>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '6px' }}>任何司法鉴定人员均可在本地环境独立运行以下标准 Python 脚本提取验证：</p>
+                <pre style={{
+                  background: 'rgba(0,0,0,0.6)',
+                  padding: '12px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.75rem',
+                  overflowX: 'auto',
+                  color: '#34d399',
+                  fontFamily: 'monospace',
+                  lineHeight: '1.4',
+                  border: '1px solid rgba(255,255,255,0.05)'
+                }}>
+{`import cv2
+import numpy as np
+from scipy.fftpack import dct
+
+# 1. 读取待检测图片并转为 YCbCr 空间
+img = cv2.imread("watermarked_image.png")
+ycbcr = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+Y = ycbcr[:, :, 0].astype(np.float32)
+
+# 2. 8x8 块离散余弦变换 (2D Block-DCT) 提取
+h, w = Y.shape
+watermark_bits = []
+for r in range(0, h - 7, 8):
+    for c in range(0, w - 7, 8):
+        block = Y[r:r+8, c:c+8] - 128.0
+        dct_block = dct(dct(block.T, norm='ortho').T, norm='ortho')
+        # 比较中频系数 (3,4) 与 (4,3) 之差
+        diff = dct_block[3, 4] - dct_block[4, 3]
+        watermark_bits.append(1 if diff > 0 else 0)
+
+print("第三方公开数学提取 Bit 序列:", watermark_bits[:64])`}
+                </pre>
+              </div>
+
+              <div style={{ textAlign: 'right', marginTop: '8px' }}>
+                <button 
+                  className="btn-primary" 
+                  onClick={() => setShowForensicModal(false)}
+                  style={{ padding: '8px 22px', fontSize: '0.85rem' }}
+                >
+                  关闭报告
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
