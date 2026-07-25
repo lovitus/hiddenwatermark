@@ -195,6 +195,9 @@ export default function App() {
   const [simNoiseLevel, setSimNoiseLevel] = useState(15);
   const [simMask, setSimMask] = useState(false);
   const [simMaskPct, setSimMaskPct] = useState(25);
+  const [simGray, setSimGray] = useState(false);
+  const [simResize, setSimResize] = useState(false);
+  const [simWebp, setSimWebp] = useState(false);
   const [simResultImgUrl, setSimResultImgUrl] = useState<string | null>(null);
   const [simResults, setSimResults] = useState<Record<string, string>>({});
 
@@ -533,7 +536,32 @@ export default function App() {
 
       let attackImgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
 
-      // 2. Add Noise Attack
+      // 2. Grayscale Conversion Attack
+      if (simGray) {
+        const data = attackImgData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const y = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          data[i] = y;
+          data[i + 1] = y;
+          data[i + 2] = y;
+        }
+        ctx.putImageData(attackImgData, 0, 0);
+      }
+
+      // 3. Resampling Downscale-Upscale Attack (50% Downsample)
+      if (simResize) {
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d')!;
+        tempCanvas.width = Math.max(64, Math.floor(targetWidth / 2));
+        tempCanvas.height = Math.max(64, Math.floor(targetHeight / 2));
+        tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+        
+        ctx.clearRect(0, 0, targetWidth, targetHeight);
+        ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, targetWidth, targetHeight);
+        attackImgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+      }
+
+      // 4. Add Noise Attack
       if (simNoise) {
         const data = attackImgData.data;
         for (let i = 0; i < data.length; i += 4) {
@@ -545,7 +573,7 @@ export default function App() {
         ctx.putImageData(attackImgData, 0, 0);
       }
 
-      // 3. Mask / Sticker Blockage Attack
+      // 5. Mask / Sticker Blockage Attack
       if (simMask) {
         const maskW = Math.floor(targetWidth * (simMaskPct / 100));
         const maskH = Math.floor(targetHeight * (simMaskPct / 100));
@@ -564,9 +592,11 @@ export default function App() {
         attackImgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
       }
 
-      // 4. JPEG Compression Attack
+      // 6. Format Conversion (WebP vs JPEG vs PNG)
       let finalImgUrl = '';
-      if (simJpeg) {
+      if (simWebp) {
+        finalImgUrl = canvas.toDataURL('image/webp', 0.4);
+      } else if (simJpeg) {
         finalImgUrl = canvas.toDataURL('image/jpeg', simJpegQual / 100);
       } else {
         finalImgUrl = canvas.toDataURL('image/png');
@@ -1087,7 +1117,40 @@ export default function App() {
             <div className="simulator-layout">
               {/* Left Column: Attack Tweaks */}
               <div className="attack-controls">
-                <label className="form-label">1. 配置模拟攻击信道</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label className="form-label" style={{ margin: 0 }}>1. 配置模拟攻击信道</label>
+                  <button
+                    onClick={() => {
+                      setSimCrop(true);
+                      setSimCropPct(25);
+                      setSimJpeg(true);
+                      setSimJpegQual(25);
+                      setSimGray(true);
+                      setSimResize(true);
+                      setSimNoise(true);
+                      setSimNoiseLevel(12);
+                      setSimMask(true);
+                      setSimMaskPct(20);
+                      showToast('已开启全套极端毁坏性压测组合！', 'info');
+                    }}
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.2)',
+                      color: '#f87171',
+                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <AlertTriangle size={14} />
+                    <span>开启极限复合压测</span>
+                  </button>
+                </div>
                 
                 {/* Attack 1: Crop */}
                 <div className="attack-card">
@@ -1114,7 +1177,39 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Attack 2: JPEG Lossy compression */}
+                {/* Attack 2: Grayscale / Color Loss */}
+                <div className="attack-card">
+                  <div className="attack-title">
+                    <span>灰度去色攻击 (100% Grayscale Conversion)</span>
+                    <div 
+                      className={`attack-toggle ${simGray ? 'active' : ''}`}
+                      onClick={() => setSimGray(!simGray)}
+                    />
+                  </div>
+                  {simGray && (
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '6px' }}>
+                      💡 彻底剥离色彩通道（验证亮度频域 DCT/DFT 在全黑白下的提取生存力）
+                    </div>
+                  )}
+                </div>
+
+                {/* Attack 3: Resampling Downsample */}
+                <div className="attack-card">
+                  <div className="attack-title">
+                    <span>分辨率重采样 (50% Downsample & Upscale)</span>
+                    <div 
+                      className={`attack-toggle ${simResize ? 'active' : ''}`}
+                      onClick={() => setSimResize(!simResize)}
+                    />
+                  </div>
+                  {simResize && (
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '6px' }}>
+                      💡 模拟社交软件（微信/Telegram）发送图片时的降采样高频过滤
+                    </div>
+                  )}
+                </div>
+
+                {/* Attack 4: JPEG Lossy compression */}
                 <div className="attack-card">
                   <div className="attack-title">
                     <span>有损 JPEG 压缩 (Lossy Compression)</span>
@@ -1139,7 +1234,23 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Attack 3: Gaussian Noise */}
+                {/* Attack 5: WebP Lossy Format Conversion */}
+                <div className="attack-card">
+                  <div className="attack-title">
+                    <span>WebP 格式有损转换 (WebP Format Conversion)</span>
+                    <div 
+                      className={`attack-toggle ${simWebp ? 'active' : ''}`}
+                      onClick={() => setSimWebp(!simWebp)}
+                    />
+                  </div>
+                  {simWebp && (
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '6px' }}>
+                      💡 转换为现代有损 WebP 格式（质量 40%），验证跨格式编码抗性
+                    </div>
+                  )}
+                </div>
+
+                {/* Attack 6: Gaussian Noise */}
                 <div className="attack-card">
                   <div className="attack-title">
                     <span>噪点干扰 (Gaussian Noise)</span>
@@ -1164,7 +1275,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Attack 4: Sticker / Center Blockage Attack */}
+                {/* Attack 7: Sticker / Center Blockage Attack */}
                 <div className="attack-card">
                   <div className="attack-title">
                     <span>贴纸/局部涂抹遮挡 (Sticker Blockage)</span>
@@ -1195,7 +1306,7 @@ export default function App() {
                   disabled={isProcessing}
                 >
                   <RefreshCw size={18} className={isProcessing ? 'upload-icon' : ''} />
-                  <span>执行攻击并探测提取</span>
+                  <span>执行极限攻击并探测提取</span>
                 </button>
               </div>
 
