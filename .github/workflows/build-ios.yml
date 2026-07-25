@@ -1,0 +1,66 @@
+name: Build iOS App
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-13
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Web Application
+        run: npm run build
+
+      - name: Add and Sync iOS Platform
+        run: |
+          npx cap add ios
+          npx cap sync ios
+
+      - name: Inject Privacy Permissions into Info.plist
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          if [ -f "$PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Need access to photo library to embed and extract hidden watermarks.'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 'Need permission to save watermarked images to photo gallery.'" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Need camera access to capture images for hidden watermarking.'" "$PLIST" || true
+          fi
+
+      - name: Build iOS Xcode Project (No Sign Archive)
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+
+      - name: Zip iOS Xcode App Archive
+        run: |
+          cd ios/App
+          zip -r ios-xcode-project.zip App.xcworkspace App.xcodeproj App
+
+      - name: Upload iOS Xcode Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-xcode-project
+          path: ios/App/ios-xcode-project.zip
+
+      - name: Attach iOS Xcode App to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ios/App/ios-xcode-project.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -16,11 +16,14 @@ import {
   Clock,
   Square,
   Eye,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Globe,
+  Search
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Toast } from '@capacitor/toast';
 import { analyzeImageTexture, calculateExtractionMetrics, TextureAnalysis } from './algorithms/utils';
+import { translations, Language } from './i18n/translations';
 
 // Vite inlined worker import
 import WatermarkWorker from './workers/watermark.worker?worker&inline';
@@ -168,6 +171,15 @@ const ALGORITHMS = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'embed' | 'extract' | 'simulator' | 'help'>('embed');
+  
+  // i18n Language State (Auto-detect browser/system language)
+  const [lang, setLang] = useState<Language>(() => {
+    return typeof navigator !== 'undefined' && navigator.language.startsWith('zh') ? 'zh' : 'en';
+  });
+
+  const t = (key: keyof typeof translations['zh']) => {
+    return translations[lang][key] || translations['zh'][key] || key;
+  };
   
   // Multiple algorithms selection
   const [selectedAlgos, setSelectedAlgos] = useState<string[]>(['dct']);
@@ -722,12 +734,40 @@ export default function App() {
   return (
     <div className="min-content">
       {/* App Header */}
-      <header className="app-header">
+      <header className="app-header" style={{ position: 'relative' }}>
+        <button
+          onClick={() => {
+            const nextLang = lang === 'zh' ? 'en' : 'zh';
+            setLang(nextLang);
+            showToast(nextLang === 'zh' ? '已切换至中文 (Simplified Chinese)' : 'Switched to English', 'info');
+          }}
+          style={{
+            position: 'absolute',
+            top: '0px',
+            right: '12px',
+            background: 'rgba(255, 255, 255, 0.08)',
+            color: '#ffffff',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '20px',
+            padding: '4px 12px',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+          }}
+        >
+          <Globe size={14} style={{ color: '#818cf8' }} />
+          <span>{lang === 'zh' ? 'English' : '中文'}</span>
+        </button>
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '8px' }}>
           <Shield size={38} className="upload-icon" style={{ animation: 'none', color: '#6366f1' }} />
-          <h1 className="app-title">隐藏水印大师</h1>
+          <h1 className="app-title">{t('appTitle')}</h1>
         </div>
-        <p className="app-subtitle">多维度图像防伪与隐形盲水印鲁棒检测防御系统</p>
+        <p className="app-subtitle">{t('appSubtitle')}</p>
       </header>
 
       {/* Tabs Navigation */}
@@ -737,28 +777,28 @@ export default function App() {
           onClick={() => setActiveTab('embed')}
         >
           <Sparkles size={20} />
-          <span>多重水印添加</span>
+          <span>{t('tabEmbed')}</span>
         </button>
         <button 
           className={`tab-btn ${activeTab === 'extract' ? 'active' : ''}`}
           onClick={() => setActiveTab('extract')}
         >
           <Unlock size={20} />
-          <span>联合还原提取</span>
+          <span>{t('tabExtract')}</span>
         </button>
         <button 
           className={`tab-btn ${activeTab === 'simulator' ? 'active' : ''}`}
           onClick={() => setActiveTab('simulator')}
         >
           <Activity size={20} />
-          <span>模拟抗攻击</span>
+          <span>{t('tabSimulator')}</span>
         </button>
         <button 
           className={`tab-btn ${activeTab === 'help' ? 'active' : ''}`}
           onClick={() => setActiveTab('help')}
         >
           <HelpCircle size={20} />
-          <span>算法说明</span>
+          <span>{t('tabHelp')}</span>
         </button>
       </nav>
 
