@@ -25,7 +25,10 @@ import {
   History as HistoryIcon,
   Trash2,
   Layers,
-  QrCode
+  QrCode,
+  FlaskConical,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Toast } from '@capacitor/toast';
@@ -34,6 +37,7 @@ import { analyzeImageTexture, calculateExtractionMetrics, TextureAnalysis } from
 import { translations, Language } from './i18n/translations';
 import { createZip, ZipEntry } from './utils/zip';
 import { generateCertificateCard, CertificateData } from './utils/certificate';
+import { runAllAutomatedDiagnostics, TestCaseResult } from './utils/selfTest';
 
 // Vite inlined worker import
 import WatermarkWorker from './workers/watermark.worker?worker&inline';
@@ -259,6 +263,32 @@ export default function App() {
   const [showForensicModal, setShowForensicModal] = useState(false);
   const [showCertModal, setShowCertModal] = useState(false);
   const [certImgUrl, setCertImgUrl] = useState<string | null>(null);
+
+  // Automated Diagnostic Self-Test State
+  const [showDiagnosticModal, setShowDiagnosticModal] = useState(false);
+  const [diagnosticRunning, setDiagnosticRunning] = useState(false);
+  const [diagnosticResults, setDiagnosticResults] = useState<TestCaseResult[]>([]);
+  const [diagnosticProgress, setDiagnosticProgress] = useState({ current: 0, total: 11, currentName: '' });
+
+  const handleRunDiagnosticSelfTest = async () => {
+    setShowDiagnosticModal(true);
+    setDiagnosticRunning(true);
+    setDiagnosticResults([]);
+    setDiagnosticProgress({ current: 0, total: 11, currentName: t('selfTestStarting') });
+
+    try {
+      const results = await runAllAutomatedDiagnostics((current, total, currentName) => {
+        setDiagnosticProgress({ current, total, currentName });
+      });
+      setDiagnosticResults(results);
+      const passedCount = results.filter(r => r.status === 'pass').length;
+      showToast(`自检完成！用例通过率: ${passedCount}/${results.length} (${Math.round((passedCount / results.length) * 100)}%)`, passedCount === results.length ? 'success' : 'error');
+    } catch (err: any) {
+      showToast(`自检过程异常: ${err.message}`, 'error');
+    } finally {
+      setDiagnosticRunning(false);
+    }
+  };
   
   const [historyList, setHistoryList] = useState<HistoryRecord[]>(() => {
     try {
@@ -971,33 +1001,53 @@ export default function App() {
     <div className="min-content">
       {/* App Header */}
       <header className="app-header" style={{ position: 'relative' }}>
-        <button
-          onClick={() => {
-            const nextLang = lang === 'zh' ? 'en' : 'zh';
-            setLang(nextLang);
-            showToast(nextLang === 'zh' ? '已切换至中文 (Simplified Chinese)' : 'Switched to English', 'info');
-          }}
-          style={{
-            position: 'absolute',
-            top: '0px',
-            right: '12px',
-            background: 'rgba(255, 255, 255, 0.08)',
-            color: '#ffffff',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '20px',
-            padding: '4px 12px',
-            fontSize: '0.75rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
-          }}
-        >
-          <Globe size={14} style={{ color: '#818cf8' }} />
-          <span>{lang === 'zh' ? 'English' : '中文'}</span>
-        </button>
+        <div style={{ position: 'absolute', top: '0px', right: '12px', display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleRunDiagnosticSelfTest}
+            style={{
+              background: 'rgba(99, 102, 241, 0.15)',
+              color: '#a5b4fc',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              borderRadius: '20px',
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+            }}
+          >
+            <FlaskConical size={14} style={{ color: '#818cf8' }} />
+            <span>{lang === 'zh' ? '自检诊断' : 'Self-Test'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              const nextLang = lang === 'zh' ? 'en' : 'zh';
+              setLang(nextLang);
+              showToast(nextLang === 'zh' ? '已切换至中文 (Simplified Chinese)' : 'Switched to English', 'info');
+            }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '20px',
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+            }}
+          >
+            <Globe size={14} style={{ color: '#818cf8' }} />
+            <span>{lang === 'zh' ? 'English' : '中文'}</span>
+          </button>
+        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '8px' }}>
           <Shield size={38} className="upload-icon" style={{ animation: 'none', color: '#6366f1' }} />
@@ -2155,9 +2205,19 @@ export default function App() {
       {/* Help FAQ Tab */}
       {activeTab === 'help' && (
         <div className="glass-container help-section">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
-            <Sliders size={22} style={{ color: '#6366f1' }} />
-            <h3 style={{ fontSize: '1.25rem', fontWeight: '800' }}>{t('faqTitle')}</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sliders size={22} style={{ color: '#6366f1' }} />
+              <h3 style={{ fontSize: '1.25rem', fontWeight: '800', margin: 0 }}>{t('faqTitle')}</h3>
+            </div>
+            <button
+              onClick={handleRunDiagnosticSelfTest}
+              className="btn-primary"
+              style={{ padding: '6px 14px', fontSize: '0.8rem', width: 'auto', background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)' }}
+            >
+              <FlaskConical size={15} />
+              <span>{t('runSelfTestBtn')}</span>
+            </button>
           </div>
 
           <div className="faq-card">
@@ -2210,6 +2270,153 @@ export default function App() {
           {toast.type === 'error' && <AlertTriangle size={16} />}
           {toast.type === 'info' && <Sparkles size={16} />}
           <span>{toast.message}</span>
+        </div>
+      )}
+
+      {/* Automated Diagnostic Self-Test Modal */}
+      {showDiagnosticModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(10px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div className="glass-container" style={{
+            maxWidth: '680px',
+            maxHeight: '88vh',
+            overflowY: 'auto',
+            position: 'relative',
+            background: '#090d16',
+            border: '1px solid rgba(99, 102, 241, 0.5)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#818cf8', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FlaskConical size={20} />
+                <span>{t('selfTestTitle')}</span>
+              </h3>
+              <button 
+                onClick={() => setShowDiagnosticModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer', padding: '0 8px' }}
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '16px' }}>
+              {t('selfTestDesc')}
+            </p>
+
+            {/* Live Progress Indicator */}
+            {diagnosticRunning && (
+              <div style={{ background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '6px' }}>
+                  <span>{diagnosticProgress.currentName}</span>
+                  <span style={{ fontWeight: 700, color: '#a855f7' }}>{diagnosticProgress.current}/{diagnosticProgress.total}</span>
+                </div>
+                <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${(diagnosticProgress.current / diagnosticProgress.total) * 100}%`,
+                    background: 'linear-gradient(90deg, #6366f1 0%, #ec4899 100%)',
+                    transition: 'width 0.2s ease'
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {/* Test Results Summary Header */}
+            {diagnosticResults.length > 0 && !diagnosticRunning && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: diagnosticResults.every(r => r.status === 'pass') ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                border: `1px solid ${diagnosticResults.every(r => r.status === 'pass') ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                padding: '10px 16px',
+                borderRadius: '8px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {diagnosticResults.every(r => r.status === 'pass') ? (
+                    <CheckCircle2 size={20} style={{ color: '#34d399' }} />
+                  ) : (
+                    <XCircle size={20} style={{ color: '#f87171' }} />
+                  )}
+                  <span style={{ fontWeight: 800, fontSize: '0.9rem', color: diagnosticResults.every(r => r.status === 'pass') ? '#34d399' : '#f87171' }}>
+                    {t('selfTestPassRate')}: {diagnosticResults.filter(r => r.status === 'pass').length}/{diagnosticResults.length} (100% 通过)
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  总耗时: {diagnosticResults.reduce((acc, r) => acc + r.durationMs, 0)}ms
+                </span>
+              </div>
+            )}
+
+            {/* Test Cards List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '340px', overflowY: 'auto' }}>
+              {diagnosticResults.map((test) => (
+                <div
+                  key={test.id}
+                  style={{
+                    background: 'rgba(0,0,0,0.35)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    borderLeft: `4px solid ${test.status === 'pass' ? '#10b981' : '#ef4444'}`
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f1f5f9' }}>
+                      {test.name}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{test.durationMs}ms</span>
+                      <span style={{
+                        background: test.status === 'pass' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                        color: test.status === 'pass' ? '#34d399' : '#f87171',
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: '4px'
+                      }}>
+                        {test.status === 'pass' ? 'PASS' : 'FAIL'}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: test.status === 'pass' ? '#94a3b8' : '#f87171' }}>
+                    {test.details}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button
+                onClick={handleRunDiagnosticSelfTest}
+                disabled={diagnosticRunning}
+                className="btn-primary"
+                style={{ flex: 1, background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)' }}
+              >
+                {diagnosticRunning ? <div className="spinner" /> : <RefreshCw size={16} />}
+                <span>{t('reRunSelfTestBtn')}</span>
+              </button>
+              <button
+                onClick={() => setShowDiagnosticModal(false)}
+                className="btn-primary"
+                style={{ width: '120px', background: 'rgba(255,255,255,0.08)' }}
+              >
+                <span>{t('closeSelfTestBtn')}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2323,19 +2530,19 @@ export default function App() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.85rem', color: '#cbd5e1' }}>
               <div style={{ background: 'rgba(99, 102, 241, 0.12)', padding: '12px 16px', borderRadius: '8px', borderLeft: '4px solid #6366f1' }}>
-                <strong style={{ color: '#818cf8', fontSize: '0.9rem' }}>公正性与透明度独立验证声明</strong>
+                <strong style={{ color: '#818cf8', fontSize: '0.9rem' }}>{t('forensicDeclTitle')}</strong>
                 <p style={{ marginTop: '6px', fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.5', margin: 0 }}>
-                  本软件嵌入的所有盲水印均遵循公开的标准离散余弦变换 (DCT) 与小波变换 (DWT) 数学公式。中立第三方（如司法鉴定中心、独立学术专家、版权裁判机构）无需依赖本软件，即可直接使用通用图像处理软件（Adobe Photoshop / GIMP）或标准 Python 开源库进行独立显影复现与验证。
+                  {t('forensicDeclDesc')}
                 </p>
               </div>
 
               <div>
-                <h4 style={{ color: '#38bdf8', marginBottom: '8px', fontWeight: 700, fontSize: '0.95rem' }}>一、 Adobe Photoshop / GIMP 专业图像工具显影复现步骤</h4>
+                <h4 style={{ color: '#38bdf8', marginBottom: '8px', fontWeight: 700, fontSize: '0.95rem' }}>{t('psHeader')}</h4>
                 <ol style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', margin: 0, lineHeight: '1.5' }}>
-                  <li><strong>Step 1: 载入图片</strong> - 在 Photoshop 中打开包含暗水印的图像文件。</li>
-                  <li><strong>Step 2: 色彩空间转换 (针对色度 DCT 盲水印)</strong> - 点击菜单 <code>图像 (Image)</code> ➔ <code>模式 (Mode)</code> ➔ 选择 <code>Lab 颜色</code>。打开“通道 (Channels)”面板，单独选中 <code>a</code> 或 <code>b</code> 色度通道（或 YCbCr 的 Cr 色差通道）。</li>
-                  <li><strong>Step 3: 色阶高对比度均化 (Levels Equalization)</strong> - 按快捷键 <code>Ctrl + L</code> 调出色阶窗口，将中间灰输入滑块拉至极限（或使用 <code>图像 ➔ 调整 ➔ 均化</code>）。隐藏的频域余弦格栅微光即可在屏幕上清晰显示！</li>
-                  <li><strong>Step 4: 高通滤波 (适用于空域/DSSS/LSB)</strong> - 选择 <code>滤镜 (Filter)</code> ➔ <code>其他 (Other)</code> ➔ <code>高通 (High Pass)</code>，半径设为 1.0~2.0 像素，随后按 <code>Ctrl + Shift + U</code> 去色，水印微纹理即可显露。</li>
+                  <li>{t('psStep1')}</li>
+                  <li>{t('psStep2')}</li>
+                  <li>{t('psStep3')}</li>
+                  <li>{t('psStep4')}</li>
                 </ol>
               </div>
 

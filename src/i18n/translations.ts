@@ -115,6 +115,15 @@ export const translations = {
     attackExtractedTitle: '攻击后联合提取检测：',
     waitingAttack: '等待执行攻击实测...',
 
+    // Diagnostic Self-Test
+    runSelfTestBtn: '🧪 全功能自动化健康自检',
+    selfTestTitle: '🧪 全功能自动化健康自检与诊断中心',
+    selfTestDesc: '在当前设备内存中自动化生成测试图像矩阵，对 6 大隐藏算法、多层融合、ZIP 打包、确权证书与 i18n 字典进行毫秒级端到端全链路诊断。',
+    selfTestStarting: '正在初始化全链路自动化测试用例...',
+    selfTestPassRate: '用例通过率',
+    closeSelfTestBtn: '关闭自检控制台',
+    reRunSelfTestBtn: '重新执行全套自检',
+
     // Toast & Status
     applyStrengthToast: '已应用智能建议强度',
     appliedGeneral: '已一键切换至【一般加密】模式 (单层 DCT 经典抗有损防护)',
@@ -270,6 +279,15 @@ export const translations = {
     attackExtractedTitle: 'Extracted Signatures After Attack:',
     waitingAttack: 'Waiting for attack execution...',
 
+    // Diagnostic Self-Test
+    runSelfTestBtn: '🧪 Run Automated Diagnostic Self-Test',
+    selfTestTitle: '🧪 Automated Health & Diagnostic Console',
+    selfTestDesc: 'Executes end-to-end automated test suites in memory: validates all 6 algorithms, multi-layer stacking, ZIP encoding, certificate generator, and i18n dictionaries.',
+    selfTestStarting: 'Initializing automated test suites...',
+    selfTestPassRate: 'Pass Rate',
+    closeSelfTestBtn: 'Close Console',
+    reRunSelfTestBtn: 'Re-run All Tests',
+
     // Toast & Status
     applyStrengthToast: 'Applied recommended strength',
     appliedGeneral: 'Switched to General Protection (1-layer DCT)',
@@ -297,7 +315,7 @@ export const translations = {
     psStep1: 'Step 1: Open Image - Load the watermarked image in Adobe Photoshop.',
     psStep2: 'Step 2: Color Space Conversion (For Chroma DCT) - Go to Image -> Mode -> Lab Color. Open Channels panel and select the a or b channel (or YCbCr Cr channel).',
     psStep3: 'Step 3: Levels Equalization - Press Ctrl + L to open Levels, drag the middle gray input slider to extreme contrast (or Image -> Adjustments -> Equalize). The hidden frequency cosine grid pattern will become visually clear on screen!',
-    psStep4: 'Step 4: High Pass Filtering (For Spatial/DSSS/LSB) - Go to Filter -> Other -> High Pass (Radius 1.0~2.0px), then press Ctrl + Shift + U to desaturate and reveal watermark micro-patterns.',
+    psStep4: 'Step 4: High Pass Filtering (For Spatial/DSSS/LSB) - Go to Filter -> Other -> High Pass (Radius 1.0~2.0px), then press Ctrl + Shift +补偿 U to desaturate and reveal watermark micro-patterns.',
     pythonHeader: '2. Open-Source Python / OpenCV Independent Extraction Code',
     pythonDesc: 'Any forensic examiner can run this open-source Python script locally to verify watermarks independently:',
     closeReportBtn: 'Close Report',
