@@ -18,12 +18,22 @@ import {
   Eye,
   SlidersHorizontal,
   Globe,
-  Search
+  Search,
+  Camera as CameraIcon,
+  FolderArchive,
+  Award,
+  History as HistoryIcon,
+  Trash2,
+  Layers,
+  QrCode
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Toast } from '@capacitor/toast';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { analyzeImageTexture, calculateExtractionMetrics, TextureAnalysis } from './algorithms/utils';
 import { translations, Language } from './i18n/translations';
+import { createZip, ZipEntry } from './utils/zip';
+import { generateCertificateCard, CertificateData } from './utils/certificate';
 
 // Vite inlined worker import
 import WatermarkWorker from './workers/watermark.worker?worker&inline';
@@ -169,8 +179,26 @@ const ALGORITHMS = [
   }
 ];
 
+export interface HistoryRecord {
+  id: string;
+  type: 'embed' | 'extract';
+  timestamp: string;
+  payload: string;
+  algorithms: string[];
+  imgUrl?: string;
+  confidence?: string;
+}
+
+export interface BatchItem {
+  id: string;
+  name: string;
+  origUrl: string;
+  status: 'waiting' | 'processing' | 'done' | 'error';
+  resultUrl?: string;
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'embed' | 'extract' | 'simulator' | 'help'>('embed');
+  const [activeTab, setActiveTab] = useState<'embed' | 'extract' | 'simulator' | 'history' | 'help'>('embed');
   
   // i18n Language State (Auto-detect browser/system language)
   const [lang, setLang] = useState<Language>(() => {
@@ -184,9 +212,18 @@ export default function App() {
   // Multiple algorithms selection
   const [selectedAlgos, setSelectedAlgos] = useState<string[]>(['dct']);
   
+  // Payload Configuration
+  const [payloadType, setPayloadType] = useState<'text' | 'logo'>('text');
   const [watermarkText, setWatermarkText] = useState('Secure Watermark 2026');
+  const [logoImgUrl, setLogoImgUrl] = useState<string | null>(null);
   const [securityKey, setSecurityKey] = useState('antigravity_safe');
   const [strength, setStrength] = useState(25);
+
+  // Single vs Batch Mode
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [batchFiles, setBatchFiles] = useState<BatchItem[]>([]);
+  const batchInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Images state
   const [sourceImgUrl, setSourceImgUrl] = useState<string | null>(null);
@@ -218,22 +255,38 @@ export default function App() {
   const [statusMsg, setStatusMsg] = useState('');
   const [progressInfo, setProgressInfo] = useState<{ step: number; total: number; algo: string } | null>(null);
 
+  // Modals & History
+  const [showForensicModal, setShowForensicModal] = useState(false);
+  const [showCertModal, setShowCertModal] = useState(false);
+  const [certImgUrl, setCertImgUrl] = useState<string | null>(null);
+  
+  const [historyList, setHistoryList] = useState<HistoryRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('hw_history_records_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const addHistoryRecord = (record: Omit<HistoryRecord, 'id' | 'timestamp'>) => {
+    const newRecord: HistoryRecord = {
+      ...record,
+      id: `REC-${Date.now().toString(36).toUpperCase()}`,
+      timestamp: new Date().toLocaleString()
+    };
+    setHistoryList(prev => {
+      const updated = [newRecord, ...prev.slice(0, 19)];
+      try { localStorage.setItem('hw_history_records_v1', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
+
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const extractInputRef = useRef<HTMLInputElement>(null);
-
-  // Sync strength slider when main selected algorithm changes
-  useEffect(() => {
-    const firstAlgo = selectedAlgos[0] || 'dct';
-    const algo = ALGORITHMS.find(a => a.id === firstAlgo);
-    if (algo) {
-      setStrength(algo.defaultStrength);
-    }
-  }, [selectedAlgos]);
-
-  const [showForensicModal, setShowForensicModal] = useState(false);
 
   // Toggle algorithm selection (multi-select)
   const handleToggleAlgo = (algoId: string) => {
@@ -456,6 +509,188 @@ export default function App() {
     showToast('图片下载已触发', 'success');
   };
 
+  // Native Camera Capture
+  const handleCameraCapture = async () => {
+    try {
+      const photo = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera
+      });
+      if (photo.dataUrl) {
+        setSourceImgUrl(photo.dataUrl);
+        setWatermarkedImgUrl(null);
+        const img = new Image();
+        img.src = photo.dataUrl;
+        await new Promise(r => { img.onload = r; });
+        setImageMeta({ origW: img.naturalWidth, origH: img.naturalHeight, procW: Math.min(1024, img.naturalWidth), procH: Math.min(1024, img.naturalHeight) });
+        showToast('相机拍摄成功！已自动载入原图', 'success');
+      }
+    } catch (err: any) {
+      if (!err.message?.includes('cancelled') && !err.message?.includes('User cancelled')) {
+        fileInputRef.current?.click();
+      }
+    }
+  };
+
+  // Logo upload & 32x32 binarizer
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const url = ev.target?.result as string;
+      setLogoImgUrl(url);
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, 32, 32);
+        const imgData = ctx.getImageData(0, 0, 32, 32);
+        let bits = '[LOGO:32]';
+        for (let i = 0; i < imgData.data.length; i += 4) {
+          const avg = (imgData.data[i] + imgData.data[i+1] + imgData.data[i+2]) / 3;
+          bits += avg > 128 ? '1' : '0';
+        }
+        setWatermarkText(bits);
+        showToast('图章已转换为 32x32 二值点阵矩阵！', 'success');
+      };
+      img.src = url;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Batch Image Upload
+  const handleBatchUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file, index) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const url = ev.target?.result as string;
+        setBatchFiles(prev => [...prev, {
+          id: `BATCH-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 5)}`,
+          name: file.name,
+          origUrl: url,
+          status: 'waiting'
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    showToast(`已成功添加 ${files.length} 张图片至批量队列！`, 'info');
+  };
+
+  // Sequential Batch Embedding Queue
+  const handleBatchEmbed = async () => {
+    if (batchFiles.length === 0) return;
+    setIsProcessing(true);
+    setStatusMsg('正在排队批量生成暗水印...');
+
+    for (let i = 0; i < batchFiles.length; i++) {
+      const item = batchFiles[i];
+      setBatchFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'processing' } : f));
+      setProgressInfo({ step: i + 1, total: batchFiles.length, algo: item.name });
+
+      try {
+        const imgData = await getImageDataFromUrl(item.origUrl);
+        const res = await runWorkerTask({
+          type: 'embed',
+          pixels: imgData.data.buffer,
+          width: imgData.width,
+          height: imgData.height,
+          text: watermarkText,
+          key: securityKey,
+          algorithms: selectedAlgos,
+          strength
+        });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = imgData.width;
+        canvas.height = imgData.height;
+        const ctx = canvas.getContext('2d')!;
+        const outImgData = new ImageData(new Uint8ClampedArray(res.pixels), imgData.width, imgData.height);
+        ctx.putImageData(outImgData, 0, 0);
+        const resultUrl = canvas.toDataURL('image/png');
+
+        setBatchFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'done', resultUrl } : f));
+      } catch {
+        setBatchFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'error' } : f));
+      }
+    }
+
+    setIsProcessing(false);
+    setProgressInfo(null);
+    setStatusMsg('');
+    showToast(t('batchSuccessToast'), 'success');
+    addHistoryRecord({
+      type: 'embed',
+      payload: watermarkText,
+      algorithms: selectedAlgos
+    });
+  };
+
+  // Download all batch watermarked photos as ZIP
+  const handleDownloadBatchZip = async () => {
+    const completed = batchFiles.filter(f => f.status === 'done' && f.resultUrl);
+    if (completed.length === 0) {
+      showToast('暂无已完成的批量水印图片', 'error');
+      return;
+    }
+
+    const zipEntries: ZipEntry[] = [];
+    for (const item of completed) {
+      const base64Data = item.resultUrl!.split(',')[1];
+      const binary = atob(base64Data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const safeName = item.name.replace(/\.[^/.]+$/, "") + "_watermarked.png";
+      zipEntries.push({ name: safeName, data: bytes });
+    }
+
+    const zipBlob = createZip(zipEntries);
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = zipUrl;
+    a.download = `watermarked_batch_${Date.now()}.zip`;
+    a.click();
+    URL.revokeObjectURL(zipUrl);
+    showToast('ZIP 压缩包打包成功并开始下载！', 'success');
+  };
+
+  // Generate Digital Copyright Certificate Card
+  const handleGenerateCertificate = async () => {
+    if (!watermarkedImgUrl) return;
+    try {
+      showToast('正在生成高公信力数字确权证书...', 'info');
+      const firstAlgo = selectedAlgos[0] || 'dct';
+      const firstResult = extractionResults[firstAlgo] || watermarkText;
+      const metrics = calculateExtractionMetrics(firstResult, watermarkText);
+
+      const certUrl = await generateCertificateCard({
+        certId: `AUTH-${Date.now().toString(36).toUpperCase()}`,
+        thumbnailUrl: watermarkedImgUrl,
+        extractedPayload: firstResult,
+        algorithms: selectedAlgos.map(id => ALGORITHMS.find(a => a.id === id)?.name.split(' ')[0] || id),
+        confidenceScore: metrics.badge,
+        berScore: metrics.ber.toFixed(3),
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        securityKeyHash: securityKey ? Array.from(securityKey).reduce((acc, char) => ((acc << 5) - acc) + char.charCodeAt(0), 0).toString(16).toUpperCase() : 'DEFAULT_NONE',
+        language: lang
+      });
+
+      setCertImgUrl(certUrl);
+      setShowCertModal(true);
+    } catch (err: any) {
+      showToast(`生成确权证书失败: ${err.message}`, 'error');
+    }
+  };
+
   // Image upload handler
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'source' | 'extract') => {
     const file = e.target.files?.[0];
@@ -515,9 +750,16 @@ export default function App() {
       );
 
       const outputImgData = new ImageData(new Uint8ClampedArray(res.pixels), imgData.width, imgData.height);
-      setWatermarkedImgUrl(imageDataToUrl(outputImgData));
+      const finalUrl = imageDataToUrl(outputImgData);
+      setWatermarkedImgUrl(finalUrl);
       showToast('多重隐藏水印叠加融合成功！', 'success');
       setStatusMsg('嵌入完成！');
+      addHistoryRecord({
+        type: 'embed',
+        payload: watermarkText,
+        algorithms: selectedAlgos,
+        imgUrl: finalUrl
+      });
       setTimeout(() => setStatusMsg(''), 2000);
     } catch (err: any) {
       showToast(`嵌入失败: ${err.message}`, 'error');
@@ -564,9 +806,16 @@ export default function App() {
       setExtractionResults(res.results);
       showToast('多算法并行探测完成！', 'success');
       setStatusMsg('探测完成！');
+      const firstAlgo = selectedAlgos[0] || 'dct';
+      addHistoryRecord({
+        type: 'extract',
+        payload: res.results[firstAlgo] || '检测完成',
+        algorithms: selectedAlgos,
+        imgUrl: watermarkedImgUrl
+      });
       setTimeout(() => setStatusMsg(''), 2000);
     } catch (err: any) {
-      showToast(`提取失败: ${err.message}`, 'error');
+      showToast(`检测出错: ${err.message}`, 'error');
       setStatusMsg('');
     } finally {
       setIsProcessing(false);
@@ -718,19 +967,6 @@ export default function App() {
       setIsProcessing(false);
       setProgressInfo(null);
     }
-  };
-
-      setSimResults(res.results);
-      setStatusMsg('模拟测试与联合提取完成！');
-      setTimeout(() => setStatusMsg(''), 2000);
-    } catch (err: any) {
-      alert(`测试失败: ${err.message}`);
-      setStatusMsg('');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   return (
     <div className="min-content">
       {/* App Header */}
@@ -794,6 +1030,13 @@ export default function App() {
           <span>{t('tabSimulator')}</span>
         </button>
         <button 
+          className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+          onClick={() => setActiveTab('history')}
+        >
+          <HistoryIcon size={20} />
+          <span>{t('tabHistory')}</span>
+        </button>
+        <button 
           className={`tab-btn ${activeTab === 'help' ? 'active' : ''}`}
           onClick={() => setActiveTab('help')}
         >
@@ -805,9 +1048,72 @@ export default function App() {
       {/* Dynamic Tabs Content */}
       {activeTab === 'embed' && (
         <div className="glass-container">
+          {/* Mode Switcher: Single vs Batch */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setIsBatchMode(false)}
+                style={{
+                  background: !isBatchMode ? '#6366f1' : 'rgba(255,255,255,0.06)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '6px 14px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <ImageIcon size={14} />
+                <span>{t('singleMode')}</span>
+              </button>
+              <button
+                onClick={() => setIsBatchMode(true)}
+                style={{
+                  background: isBatchMode ? '#6366f1' : 'rgba(255,255,255,0.06)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '6px 14px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <FolderArchive size={14} />
+                <span>{t('batchMode')}</span>
+              </button>
+            </div>
+            <button
+              onClick={handleCameraCapture}
+              style={{
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: '#34d399',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <CameraIcon size={14} />
+              <span>{t('cameraShotBtn')}</span>
+            </button>
+          </div>
+
           <div className="form-group">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-              <label className="form-label" style={{ margin: 0 }}>1. 选择隐藏水印方式 (可手动勾选或一键预设)</label>
+              <label className="form-label" style={{ margin: 0 }}>{t('selectAlgoTitle')}</label>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button 
                   onClick={() => applyPresetMode('general')}
@@ -822,7 +1128,7 @@ export default function App() {
                     cursor: 'pointer'
                   }}
                 >
-                  🔒 一般加密
+                  {t('presetGeneral')}
                 </button>
                 <button 
                   onClick={() => applyPresetMode('complex')}
@@ -837,7 +1143,7 @@ export default function App() {
                     cursor: 'pointer'
                   }}
                 >
-                  🛡️ 复杂加密 (3层)
+                  {t('presetComplex')}
                 </button>
                 <button 
                   onClick={() => applyPresetMode('ultimate')}
@@ -853,7 +1159,7 @@ export default function App() {
                     boxShadow: selectedAlgos.length === 5 ? '0 0 12px rgba(236, 72, 153, 0.4)' : 'none'
                   }}
                 >
-                  👑 终极加密 (5层全家桶)
+                  {t('presetUltimate')}
                 </button>
               </div>
             </div>
@@ -887,43 +1193,109 @@ export default function App() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">2. 水印参数配置</label>
+            <label className="form-label">{t('paramConfigTitle')}</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>水印文字 Payload</label>
-                  <button 
-                    onClick={generateTimestampSignature}
+              {/* Payload Type Selector */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setPayloadType('text')}
+                  style={{
+                    flex: 1,
+                    background: payloadType === 'text' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255,255,255,0.05)',
+                    color: payloadType === 'text' ? '#a5b4fc' : '#94a3b8',
+                    border: `1px solid ${payloadType === 'text' ? '#6366f1' : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: '6px',
+                    padding: '6px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {t('textPayload')}
+                </button>
+                <button
+                  onClick={() => setPayloadType('logo')}
+                  style={{
+                    flex: 1,
+                    background: payloadType === 'logo' ? 'rgba(236, 72, 153, 0.25)' : 'rgba(255,255,255,0.05)',
+                    color: payloadType === 'logo' ? '#f472b6' : '#94a3b8',
+                    border: `1px solid ${payloadType === 'logo' ? '#ec4899' : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: '6px',
+                    padding: '6px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {t('logoPayload')}
+                </button>
+              </div>
+
+              {payloadType === 'text' ? (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>{t('payloadLabel')}</label>
+                    <button 
+                      onClick={generateTimestampSignature}
+                      style={{
+                        background: 'rgba(99, 102, 241, 0.15)',
+                        color: '#a5b4fc',
+                        border: '1px solid rgba(99, 102, 241, 0.3)',
+                        borderRadius: '4px',
+                        padding: '2px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <Clock size={12} />
+                      <span>{t('timestampBtn')}</span>
+                    </button>
+                  </div>
+                  <input 
+                    type="text" 
+                    className="input-text" 
+                    value={watermarkText} 
+                    onChange={(e) => setWatermarkText(e.target.value)} 
+                    placeholder={t('watermarkPlaceholder')}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>上传黑白 Logo/二维码图章</label>
+                  <div 
+                    onClick={() => logoInputRef.current?.click()}
                     style={{
-                      background: 'rgba(99, 102, 241, 0.15)',
-                      color: '#a5b4fc',
-                      border: '1px solid rgba(99, 102, 241, 0.3)',
-                      borderRadius: '4px',
-                      padding: '2px 8px',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
+                      border: '1px dashed rgba(236, 72, 153, 0.4)',
+                      background: 'rgba(236, 72, 153, 0.05)',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      textAlign: 'center',
+                      cursor: 'pointer'
                     }}
                   >
-                    <Clock size={12} />
-                    <span>插入防伪时间戳签名</span>
-                  </button>
+                    {logoImgUrl ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                        <img src={logoImgUrl} style={{ width: '48px', height: '48px', objectFit: 'contain', background: '#ffffff', borderRadius: '4px', padding: '2px' }} alt="Logo" />
+                        <span style={{ fontSize: '0.8rem', color: '#f472b6', fontWeight: 700 }}>图章点阵已就绪 (32x32 自动量化)</span>
+                      </div>
+                    ) : (
+                      <div style={{ color: '#cbd5e1', fontSize: '0.8rem' }}>
+                        <QrCode size={24} style={{ color: '#ec4899', margin: '0 auto 4px auto', display: 'block' }} />
+                        <span>{t('uploadLogoClick')}</span>
+                      </div>
+                    )}
+                    <input type="file" ref={logoInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleLogoUpload} />
+                  </div>
                 </div>
-                <input 
-                  type="text" 
-                  className="input-text" 
-                  value={watermarkText} 
-                  onChange={(e) => setWatermarkText(e.target.value)} 
-                  placeholder="输入要嵌入的水印内容"
-                />
-              </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>安全密钥 (Seeded Key)</label>
+                  <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('secretKeyLabel')}</label>
                   <input 
                     type="text" 
                     className="input-text" 
@@ -934,7 +1306,7 @@ export default function App() {
                 </div>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                    嵌入基准强度: {strength}
+                    {t('strengthLabel')}: {strength}
                   </label>
                   <div className="slider-container" style={{ height: '50px' }}>
                     <input 
@@ -950,12 +1322,12 @@ export default function App() {
               </div>
 
               {/* Texture Analysis & Recommended Strength Banner */}
-              {textureAnalysis && (
+              {textureAnalysis && !isBatchMode && (
                 <div className="texture-banner">
                   <div className="texture-info">
                     <div className="texture-title">
                       <SlidersHorizontal size={14} style={{ color: '#6366f1' }} />
-                      <span>图像频域复杂度诊断: {textureAnalysis.score}/100 ({textureAnalysis.complexity === 'low' ? '平滑' : textureAnalysis.complexity === 'medium' ? '适中' : '丰富'})</span>
+                      <span>{t('textureTitle')}: {textureAnalysis.score}/100 ({textureAnalysis.complexity === 'low' ? t('smooth') : textureAnalysis.complexity === 'medium' ? t('medium') : t('rich')})</span>
                     </div>
                     <div className="texture-desc">{textureAnalysis.advice}</div>
                   </div>
@@ -963,61 +1335,153 @@ export default function App() {
                     className="btn-apply-strength"
                     onClick={() => {
                       setStrength(textureAnalysis.recommendedStrength);
-                      showToast(`已应用智能建议强度: ${textureAnalysis.recommendedStrength}`, 'success');
+                      showToast(`${t('applyStrengthToast')}: ${textureAnalysis.recommendedStrength}`, 'success');
                     }}
                   >
-                    应用推荐强度 ({textureAnalysis.recommendedStrength})
+                    {t('applyRecStrength')} ({textureAnalysis.recommendedStrength})
                   </button>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">3. 上传原始图片</label>
-            {!sourceImgUrl ? (
-              <div className="upload-zone" onClick={() => fileInputRef.current?.click()}>
-                <ImageIcon size={40} className="upload-icon" />
-                <span className="upload-text">点击或拖拽上传图片</span>
-                <span className="upload-hint">自动等比裁剪/压缩至 1024px，确保移动端秒级处理</span>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  style={{ display: 'none' }} 
-                  accept="image/*"
-                  onChange={(e) => handleImageUpload(e, 'source')}
-                />
-              </div>
-            ) : (
-              <div>
-                <div className="preview-container">
-                  <img src={sourceImgUrl} className="preview-img" alt="Source" />
-                  <button className="remove-btn" onClick={() => { setSourceImgUrl(null); setTextureAnalysis(null); }}>×</button>
+          {/* Single Mode Upload vs Batch Mode Upload */}
+          {!isBatchMode ? (
+            <div className="form-group">
+              <label className="form-label">{t('uploadSourceTitle')}</label>
+              {!sourceImgUrl ? (
+                <div className="upload-zone" onClick={() => fileInputRef.current?.click()}>
+                  <ImageIcon size={40} className="upload-icon" />
+                  <span className="upload-text">{t('uploadClickText')}</span>
+                  <span className="upload-hint">{t('uploadHintText')}</span>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    style={{ display: 'none' }} 
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(e, 'source')}
+                  />
                 </div>
-                {imageMeta && (
-                  <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '6px' }}>
-                      原图尺寸: {imageMeta.origW} × {imageMeta.origH}
-                    </span>
-                    {imageMeta.origW !== imageMeta.procW && (
-                      <span style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', padding: '3px 10px', borderRadius: '6px', fontWeight: '600' }}>
-                        已自动优化为: {imageMeta.procW} × {imageMeta.procH} (防止内存溢出)
-                      </span>
-                    )}
+              ) : (
+                <div>
+                  <div className="preview-container">
+                    <img src={sourceImgUrl} className="preview-img" alt="Source" />
+                    <button className="remove-btn" onClick={() => { setSourceImgUrl(null); setTextureAnalysis(null); }}>×</button>
                   </div>
+                  {imageMeta && (
+                    <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '6px' }}>
+                        {t('origSize')}: {imageMeta.origW} × {imageMeta.origH}
+                      </span>
+                      {imageMeta.origW !== imageMeta.procW && (
+                        <span style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', padding: '3px 10px', borderRadius: '6px', fontWeight: '600' }}>
+                          {t('optimizedSize')}: {imageMeta.procW} × {imageMeta.procH} ({t('memOverflowGuard')})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label className="form-label" style={{ margin: 0 }}>{t('batchTitle')}</label>
+                {batchFiles.length > 0 && (
+                  <button
+                    onClick={() => setBatchFiles([])}
+                    style={{ background: 'none', border: 'none', color: '#f87171', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Trash2 size={12} />
+                    <span>清空队列</span>
+                  </button>
                 )}
               </div>
-            )}
-          </div>
 
-          {sourceImgUrl && (
+              <div 
+                className="upload-zone" 
+                onClick={() => batchInputRef.current?.click()}
+                style={{ padding: '24px 16px', marginBottom: '12px' }}
+              >
+                <FolderArchive size={36} className="upload-icon" style={{ color: '#818cf8' }} />
+                <span className="upload-text">{t('batchUploadClick')}</span>
+                <span className="upload-hint">{t('batchHint')}</span>
+                <input 
+                  type="file" 
+                  ref={batchInputRef} 
+                  style={{ display: 'none' }} 
+                  accept="image/*" 
+                  multiple 
+                  onChange={handleBatchUpload}
+                />
+              </div>
+
+              {batchFiles.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
+                  {batchFiles.map((file, idx) => (
+                    <div 
+                      key={file.id} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        background: 'rgba(0,0,0,0.3)', 
+                        padding: '8px 12px', 
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255,255,255,0.05)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <img src={file.origUrl} style={{ width: '36px', height: '36px', objectFit: 'cover', borderRadius: '4px' }} alt="" />
+                        <div style={{ fontSize: '0.8rem', color: '#f1f5f9', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {file.name}
+                        </div>
+                      </div>
+                      <div>
+                        {file.status === 'waiting' && <span style={{ fontSize: '0.7rem', color: '#94a3b8', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '4px' }}>{t('batchStatusWaiting')}</span>}
+                        {file.status === 'processing' && <span style={{ fontSize: '0.7rem', color: '#a5b4fc', background: 'rgba(99, 102, 241, 0.2)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>{t('batchStatusProcessing')}...</span>}
+                        {file.status === 'done' && <span style={{ fontSize: '0.7rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.2)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>✓ {t('batchStatusDone')}</span>}
+                        {file.status === 'error' && <span style={{ fontSize: '0.7rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>失败</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {batchFiles.length > 0 && (
+                <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                  <button
+                    className="btn-primary"
+                    onClick={handleBatchEmbed}
+                    disabled={isProcessing}
+                    style={{ flex: 1 }}
+                  >
+                    {isProcessing ? <div className="spinner" /> : <Shield size={18} />}
+                    <span>{t('batchProcessBtn')} ({batchFiles.length})</span>
+                  </button>
+                  {batchFiles.some(f => f.status === 'done') && (
+                    <button
+                      className="btn-primary"
+                      onClick={handleDownloadBatchZip}
+                      style={{ flex: 1.2, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+                    >
+                      <Download size={18} />
+                      <span>{t('batchDownloadZip')}</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isBatchMode && sourceImgUrl && (
             <button 
               className="btn-primary" 
               onClick={handleEmbed}
               disabled={isProcessing}
             >
               {isProcessing ? <div className="spinner" /> : <Shield size={18} />}
-              <span>{isProcessing ? '正在依次生成并融合多重隐藏水印...' : '开始生成隐藏水印图片'}</span>
+              <span>{isProcessing ? t('embeddingProcessing') : t('startEmbedBtn')}</span>
             </button>
           )}
 
@@ -1032,7 +1496,7 @@ export default function App() {
               animation: 'fadeIn 0.2s ease-out'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '8px' }}>
-                <span>正在处理算法 ({progressInfo.step}/{progressInfo.total}): <strong style={{ color: '#818cf8' }}>{progressInfo.algo}</strong></span>
+                <span>正在处理 ({progressInfo.step}/{progressInfo.total}): <strong style={{ color: '#818cf8' }}>{progressInfo.algo}</strong></span>
                 <span style={{ fontWeight: '700', color: '#a855f7' }}>{Math.round((progressInfo.step / progressInfo.total) * 100)}%</span>
               </div>
               <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
@@ -1046,12 +1510,12 @@ export default function App() {
             </div>
           )}
 
-          {watermarkedImgUrl && sourceImgUrl && (
+          {!isBatchMode && watermarkedImgUrl && sourceImgUrl && (
             <div className="result-box" style={{ marginTop: '24px' }}>
               <div className="result-header" style={{ color: '#34d399', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <CheckCircle size={18} />
-                  <span>多重水印叠加融合成功！</span>
+                  <span>{t('embedSuccessTitle')}</span>
                 </div>
                 <button 
                   onClick={() => setShowCompareSlider(!showCompareSlider)}
@@ -1069,7 +1533,7 @@ export default function App() {
                   }}
                 >
                   <Eye size={14} />
-                  <span>{showCompareSlider ? '单图预览' : '双图滑动对比'}</span>
+                  <span>{showCompareSlider ? t('singlePreview') : t('splitCompare')}</span>
                 </button>
               </div>
 
@@ -1078,7 +1542,7 @@ export default function App() {
                 <div style={{ margin: '12px 0' }}>
                   <ImageCompareSlider originalUrl={sourceImgUrl} watermarkedUrl={watermarkedImgUrl} />
                   <div style={{ textAlign: 'center', fontSize: '0.75rem', color: '#94a3b8', marginTop: '6px' }}>
-                    💡 拖动中间蓝线可左右对比原图与水印图，肉眼完全感知不到任何画质损失
+                    {t('compareTip')}
                   </div>
                 </div>
               ) : (
@@ -1094,14 +1558,14 @@ export default function App() {
                   style={{ flex: 1, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 20px rgba(16, 185, 129, 0.3)' }}
                 >
                   <Share2 size={18} />
-                  <span>保存到相册 / 系统分享</span>
+                  <span>{t('saveShareBtn')}</span>
                 </button>
                 <a 
                   href={watermarkedImgUrl} 
                   download={`watermarked_multi_${Date.now()}.png`}
                   className="btn-primary" 
                   style={{ width: '52px', padding: 0, justifyContent: 'center', background: 'rgba(255,255,255,0.1)' }}
-                  title="强行作为文件下载"
+                  title={t('forceDownloadTitle')}
                 >
                   <Download size={18} />
                 </a>
@@ -1249,36 +1713,58 @@ export default function App() {
 
           {Object.keys(extractionResults).length > 0 && (
             <div className="result-box">
-              <div className="result-header" style={{ justifyContent: 'space-between' }}>
+              <div className="result-header" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <FileText size={18} />
-                  <span>各算法联合还原检测与匹配度分析：</span>
+                  <span>{t('resultsTitle')}</span>
                 </div>
-                <button
-                  onClick={() => setShowForensicModal(true)}
-                  style={{
-                    background: 'rgba(56, 189, 248, 0.15)',
-                    color: '#38bdf8',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
-                    borderRadius: '6px',
-                    padding: '3px 8px',
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <FileText size={13} />
-                  <span>⚖️ Photoshop/第三方复现报告</span>
-                </button>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={handleGenerateCertificate}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.2) 0%, rgba(202, 138, 4, 0.2) 100%)',
+                      color: '#facc15',
+                      border: '1px solid rgba(234, 179, 8, 0.4)',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <Award size={14} />
+                    <span>{t('generateCertBtn')}</span>
+                  </button>
+                  <button
+                    onClick={() => setShowForensicModal(true)}
+                    style={{
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <FileText size={13} />
+                    <span>{t('forensicReportBtn')}</span>
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {Object.entries(extractionResults).map(([algoId, res]) => {
                   const algo = ALGORITHMS.find(a => a.id === algoId)!;
                   const isSuccess = !res.startsWith('提取失败') && !res.startsWith('检测出错');
                   const metrics = calculateExtractionMetrics(res, watermarkText);
+                  const isLogo = res.startsWith('[LOGO:32]');
 
                   return (
                     <div 
@@ -1300,9 +1786,17 @@ export default function App() {
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: '1rem', fontWeight: '700', color: isSuccess ? '#34d399' : '#f87171', wordBreak: 'break-all' }}>
-                        {res}
-                      </div>
+                      {isLogo ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
+                          <div style={{ fontSize: '0.85rem', color: '#f472b6', fontWeight: 700 }}>
+                            🖼️ 隐形图章/二维码点阵还原就绪 (32x32)
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '1rem', fontWeight: '700', color: isSuccess ? '#34d399' : '#f87171', wordBreak: 'break-all' }}>
+                          {res}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1312,26 +1806,27 @@ export default function App() {
         </div>
       )}
 
+      {/* Simulator Tab */}
       {activeTab === 'simulator' && (
         <div className="glass-container">
           <div className="form-group" style={{ marginBottom: '10px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '4px' }}>抗攻击/剪切压缩实测模拟器</h3>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '4px' }}>{t('simulatorTitle')}</h3>
             <p style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
-              无需手动打包和外部图片工具，在 app 内直接模拟水印图片遭受各种网络压缩或裁剪攻击，一键验证多重算法抗性。
+              {t('simulatorDesc')}
             </p>
           </div>
 
           {!watermarkedImgUrl ? (
             <div style={{ textAlign: 'center', padding: '40px 20px', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '16px', color: '#64748b' }}>
               <AlertTriangle size={32} style={{ marginBottom: '8px', color: '#eab308' }} />
-              <div>请先在“添加水印”页面生成或在“反向探测”页面上传带水印的图片</div>
+              <div>{t('noWatermarkedImg')}</div>
             </div>
           ) : (
             <div className="simulator-layout">
               {/* Left Column: Attack Tweaks */}
               <div className="attack-controls">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <label className="form-label" style={{ margin: 0 }}>1. 配置模拟攻击信道</label>
+                  <label className="form-label" style={{ margin: 0 }}>{t('channelConfigTitle')}</label>
                   <button
                     onClick={() => {
                       setSimCrop(true);
@@ -1344,7 +1839,7 @@ export default function App() {
                       setSimNoiseLevel(12);
                       setSimMask(true);
                       setSimMaskPct(20);
-                      showToast('已开启全套极端毁坏性压测组合！', 'info');
+                      showToast(t('appliedExtremeCombo'), 'info');
                     }}
                     style={{
                       background: 'rgba(239, 68, 68, 0.2)',
@@ -1354,29 +1849,27 @@ export default function App() {
                       borderRadius: '6px',
                       fontSize: '0.75rem',
                       fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
+                      cursor: 'pointer'
                     }}
                   >
-                    <AlertTriangle size={14} />
-                    <span>开启极限复合压测</span>
+                    {t('extremeComboBtn')}
                   </button>
                 </div>
-                
-                {/* Attack 1: Crop */}
-                <div className="attack-card">
-                  <div className="attack-title">
-                    <span>剪切攻击 (Crop Image)</span>
-                    <div 
-                      className={`attack-toggle ${simCrop ? 'active' : ''}`}
-                      onClick={() => setSimCrop(!simCrop)}
-                    />
+
+                <div className="attack-item">
+                  <div className="attack-header">
+                    <label className="checkbox-label">
+                      <input 
+                        type="checkbox" 
+                        checked={simCrop} 
+                        onChange={(e) => setSimCrop(e.target.checked)} 
+                      />
+                      <span>{t('attackCrop')}</span>
+                    </label>
+                    <span className="attack-val">{simCropPct}%</span>
                   </div>
                   {simCrop && (
-                    <div className="slider-container" style={{ marginTop: '8px' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>边缘裁剪比例:</span>
+                    <div className="slider-container" style={{ height: '36px' }}>
                       <input 
                         type="range" 
                         className="range-slider" 
@@ -1385,55 +1878,60 @@ export default function App() {
                         value={simCropPct} 
                         onChange={(e) => setSimCropPct(Number(e.target.value))} 
                       />
-                      <span className="slider-val">{simCropPct}%</span>
                     </div>
                   )}
                 </div>
 
-                {/* Attack 2: Grayscale / Color Loss */}
-                <div className="attack-card">
-                  <div className="attack-title">
-                    <span>灰度去色攻击 (100% Grayscale Conversion)</span>
-                    <div 
-                      className={`attack-toggle ${simGray ? 'active' : ''}`}
-                      onClick={() => setSimGray(!simGray)}
-                    />
+                <div className="attack-item">
+                  <div className="attack-header">
+                    <label className="checkbox-label">
+                      <input 
+                        type="checkbox" 
+                        checked={simGray} 
+                        onChange={(e) => setSimGray(e.target.checked)} 
+                      />
+                      <span>{t('attackGray')}</span>
+                    </label>
                   </div>
                   {simGray && (
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '6px' }}>
-                      💡 彻底剥离色彩通道（验证亮度频域 DCT/DFT 在全黑白下的提取生存力）
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
+                      {t('grayTip')}
                     </div>
                   )}
                 </div>
 
-                {/* Attack 3: Resampling Downsample */}
-                <div className="attack-card">
-                  <div className="attack-title">
-                    <span>分辨率重采样 (50% Downsample & Upscale)</span>
-                    <div 
-                      className={`attack-toggle ${simResize ? 'active' : ''}`}
-                      onClick={() => setSimResize(!simResize)}
-                    />
+                <div className="attack-item">
+                  <div className="attack-header">
+                    <label className="checkbox-label">
+                      <input 
+                        type="checkbox" 
+                        checked={simResize} 
+                        onChange={(e) => setSimResize(e.target.checked)} 
+                      />
+                      <span>{t('attackResize')}</span>
+                    </label>
                   </div>
                   {simResize && (
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '6px' }}>
-                      💡 模拟社交软件（微信/Telegram）发送图片时的降采样高频过滤
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
+                      {t('resizeTip')}
                     </div>
                   )}
                 </div>
 
-                {/* Attack 4: JPEG Lossy compression */}
-                <div className="attack-card">
-                  <div className="attack-title">
-                    <span>有损 JPEG 压缩 (Lossy Compression)</span>
-                    <div 
-                      className={`attack-toggle ${simJpeg ? 'active' : ''}`}
-                      onClick={() => setSimJpeg(!simJpeg)}
-                    />
+                <div className="attack-item">
+                  <div className="attack-header">
+                    <label className="checkbox-label">
+                      <input 
+                        type="checkbox" 
+                        checked={simJpeg} 
+                        onChange={(e) => setSimJpeg(e.target.checked)} 
+                      />
+                      <span>{t('attackJpeg')}</span>
+                    </label>
+                    <span className="attack-val">{simJpegQual}%</span>
                   </div>
                   {simJpeg && (
-                    <div className="slider-container" style={{ marginTop: '8px' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>有损压缩质量:</span>
+                    <div className="slider-container" style={{ height: '36px' }}>
                       <input 
                         type="range" 
                         className="range-slider" 
@@ -1442,39 +1940,24 @@ export default function App() {
                         value={simJpegQual} 
                         onChange={(e) => setSimJpegQual(Number(e.target.value))} 
                       />
-                      <span className="slider-val" style={{ color: '#ef4444' }}>{simJpegQual}</span>
                     </div>
                   )}
                 </div>
 
-                {/* Attack 5: WebP Lossy Format Conversion */}
-                <div className="attack-card">
-                  <div className="attack-title">
-                    <span>WebP 格式有损转换 (WebP Format Conversion)</span>
-                    <div 
-                      className={`attack-toggle ${simWebp ? 'active' : ''}`}
-                      onClick={() => setSimWebp(!simWebp)}
-                    />
-                  </div>
-                  {simWebp && (
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '6px' }}>
-                      💡 转换为现代有损 WebP 格式（质量 40%），验证跨格式编码抗性
-                    </div>
-                  )}
-                </div>
-
-                {/* Attack 6: Gaussian Noise */}
-                <div className="attack-card">
-                  <div className="attack-title">
-                    <span>噪点干扰 (Gaussian Noise)</span>
-                    <div 
-                      className={`attack-toggle ${simNoise ? 'active' : ''}`}
-                      onClick={() => setSimNoise(!simNoise)}
-                    />
+                <div className="attack-item">
+                  <div className="attack-header">
+                    <label className="checkbox-label">
+                      <input 
+                        type="checkbox" 
+                        checked={simNoise} 
+                        onChange={(e) => setSimNoise(e.target.checked)} 
+                      />
+                      <span>{t('attackNoise')}</span>
+                    </label>
+                    <span className="attack-val">{simNoiseLevel}</span>
                   </div>
                   {simNoise && (
-                    <div className="slider-container" style={{ marginTop: '8px' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>噪声电平:</span>
+                    <div className="slider-container" style={{ height: '36px' }}>
                       <input 
                         type="range" 
                         className="range-slider" 
@@ -1483,23 +1966,24 @@ export default function App() {
                         value={simNoiseLevel} 
                         onChange={(e) => setSimNoiseLevel(Number(e.target.value))} 
                       />
-                      <span className="slider-val">{simNoiseLevel}</span>
                     </div>
                   )}
                 </div>
 
-                {/* Attack 7: Sticker / Center Blockage Attack */}
-                <div className="attack-card">
-                  <div className="attack-title">
-                    <span>贴纸/局部涂抹遮挡 (Sticker Blockage)</span>
-                    <div 
-                      className={`attack-toggle ${simMask ? 'active' : ''}`}
-                      onClick={() => setSimMask(!simMask)}
-                    />
+                <div className="attack-item">
+                  <div className="attack-header">
+                    <label className="checkbox-label">
+                      <input 
+                        type="checkbox" 
+                        checked={simMask} 
+                        onChange={(e) => setSimMask(e.target.checked)} 
+                      />
+                      <span>{t('attackMask')}</span>
+                    </label>
+                    <span className="attack-val">{simMaskPct}%</span>
                   </div>
                   {simMask && (
-                    <div className="slider-container" style={{ marginTop: '8px' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>遮挡区域大小:</span>
+                    <div className="slider-container" style={{ height: '36px' }}>
                       <input 
                         type="range" 
                         className="range-slider" 
@@ -1508,31 +1992,28 @@ export default function App() {
                         value={simMaskPct} 
                         onChange={(e) => setSimMaskPct(Number(e.target.value))} 
                       />
-                      <span className="slider-val">{simMaskPct}%</span>
                     </div>
                   )}
                 </div>
 
                 <button 
-                  className="btn-primary"
+                  className="btn-primary" 
                   onClick={handleSimulateAttackAndExtract}
                   disabled={isProcessing}
+                  style={{ marginTop: '16px', background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' }}
                 >
-                  <RefreshCw size={18} className={isProcessing ? 'upload-icon' : ''} />
-                  <span>执行极限攻击并探测提取</span>
+                  {isProcessing ? <div className="spinner" /> : <RefreshCw size={18} />}
+                  <span>{t('runAttackBtn')}</span>
                 </button>
               </div>
 
-              {/* Right Column: Attacked Result & Extracted Info */}
-              <div>
-                <label className="form-label">2. 攻击效果与多重提取结果</label>
-                
+              {/* Right Column: Attacked Preview & Extraction Results */}
+              <div className="attack-preview">
+                <label className="form-label">{t('attackResultTitle')}</label>
                 {simResultImgUrl ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div className="preview-container" style={{ margin: 0 }}>
-                      <span style={{ position: 'absolute', top: '8px', left: '8px', background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#ef4444' }}>
-                        受攻击渲染效果
-                      </span>
+                  <div>
+                    <div className="preview-container" style={{ position: 'relative' }}>
+                      <span className="preview-tag">{t('attackedRenderTag')}</span>
                       <img src={simResultImgUrl} className="preview-img" alt="Attacked Result" />
                     </div>
 
@@ -1540,7 +2021,7 @@ export default function App() {
                       <div className="result-box" style={{ margin: 0 }}>
                         <div className="result-header">
                           <Unlock size={18} />
-                          <span>攻击后联合提取检测：</span>
+                          <span>{t('attackExtractedTitle')}</span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {Object.entries(simResults).map(([algoId, res]) => {
@@ -1569,7 +2050,7 @@ export default function App() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '180px', border: '1px dashed rgba(255,255,255,0.05)', borderRadius: '16px', color: '#475569', fontSize: '0.85rem' }}>
-                    等待执行攻击实测...
+                    {t('waitingAttack')}
                   </div>
                 )}
               </div>
@@ -1578,36 +2059,120 @@ export default function App() {
         </div>
       )}
 
+      {/* History Tab */}
+      {activeTab === 'history' && (
+        <div className="glass-container">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px', marginBottom: '16px' }}>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#f8fafc' }}>{t('historyHeader')}</h3>
+              <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '4px 0 0 0' }}>{t('historyDesc')}</p>
+            </div>
+            {historyList.length > 0 && (
+              <button
+                onClick={() => {
+                  setHistoryList([]);
+                  localStorage.removeItem('hw_history_records_v1');
+                  showToast(t('historyCleared'), 'info');
+                }}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: '#f87171',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '6px',
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <Trash2 size={13} />
+                <span>{t('clearHistoryBtn')}</span>
+              </button>
+            )}
+          </div>
+
+          {historyList.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
+              <HistoryIcon size={40} style={{ margin: '0 auto 12px auto', opacity: 0.5 }} />
+              <div>{t('noHistoryText')}</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {historyList.map(record => (
+                <div
+                  key={record.id}
+                  style={{
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '10px',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {record.imgUrl ? (
+                      <img src={record.imgUrl} style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '6px' }} alt="" />
+                    ) : (
+                      <div style={{ width: '48px', height: '48px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <ImageIcon size={20} style={{ color: '#64748b' }} />
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{
+                          background: record.type === 'embed' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                          color: record.type === 'embed' ? '#a5b4fc' : '#34d399',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          padding: '2px 6px',
+                          borderRadius: '4px'
+                        }}>
+                          {record.type === 'embed' ? t('historyItemEmbed') : t('historyItemExtract')}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{record.timestamp}</span>
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#f1f5f9', fontWeight: 600, wordBreak: 'break-all' }}>
+                        {record.payload}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px' }}>
+                        算法: {record.algorithms.join(', ')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Help FAQ Tab */}
       {activeTab === 'help' && (
         <div className="glass-container help-section">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
             <Sliders size={22} style={{ color: '#6366f1' }} />
-            <h3 style={{ fontSize: '1.25rem', fontWeight: '800' }}>隐藏多重盲水印防御原理解析</h3>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: '800' }}>{t('faqTitle')}</h3>
           </div>
 
           <div className="faq-card">
-            <div className="faq-q">🤔 什么是多重隐藏水印？</div>
-            <div className="faq-a">
-              多重隐藏水印（Layered Blind Watermarking）允许你将多层不同的数字版权水印以串联的形式叠加融合进图片的不同层面。例如，你可以同时在Cr色度通道嵌入<strong>色度空间DCT水印</strong>（防色度损失），并在Y亮度通道嵌入<strong>频域DCT扩频水印</strong>（防有损JPEG压缩），两者互不干扰、完美兼容，提供了极致的主动安全防御屏障。
-            </div>
+            <div className="faq-q">{t('faqQ1')}</div>
+            <div className="faq-a" style={{ whiteSpace: 'pre-line' }}>{t('faqA1')}</div>
           </div>
 
           <div className="faq-card">
-            <div className="faq-q">🛡️ 为什么图片被剪切、压缩后也能恢复？</div>
-            <div className="faq-a">
-              1. <strong>频域波形调制</strong>：水印嵌入在频域中频部分，而不是特定的像素点。JPEG有损压缩主要丢弃难以感知的超高频，因此中频的水印依然能被精确滤出。
-              <br />
-              2. <strong>块级多数表决冗余</strong>：水印位序列被铺满在数千个 $8 \times 8$ 的小波/余弦格栅里。物理裁剪掉50%甚至70%后，未损坏的网格依旧能通过统计多数表决来修正局部损坏。
-              <br />
-              3. <strong>网格移位自搜寻</strong>：为了解决物理裁剪后的像素网格错位，探测器会自动检索 64 种对齐偏移量并根据同步头部特征恢复像素格对齐，极具抗裁剪抗性。
-            </div>
+            <div className="faq-q">{t('faqQ2')}</div>
+            <div className="faq-a" style={{ whiteSpace: 'pre-line' }}>{t('faqA2')}</div>
           </div>
 
           <div className="faq-card">
-            <div className="faq-q">⚠️ 多重叠加有什么限制吗？</div>
-            <div className="faq-a">
-              频域算法（DCT, Chroma, DWT, DFT, DSSS）之间可以通过浮点反变换进行良好的兼容和多层堆叠。但是<strong>最低有效位 (LSB) 密写</strong>属于最末端空域微调，任何频域反变换Clamp操作都会磨灭其最低位信息。因此，<strong>若勾选了LSB，建议不勾选其他算法以保证解密成功率</strong>。
-            </div>
+            <div className="faq-q">{t('faqQ3')}</div>
+            <div className="faq-a" style={{ whiteSpace: 'pre-line' }}>{t('faqA3')}</div>
           </div>
         </div>
       )}
@@ -1648,6 +2213,78 @@ export default function App() {
         </div>
       )}
 
+      {/* Certificate Card Preview Modal */}
+      {showCertModal && certImgUrl && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(10px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div className="glass-container" style={{
+            maxWidth: '560px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            position: 'relative',
+            background: '#0f172a',
+            border: '1px solid rgba(234, 179, 8, 0.4)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#facc15', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Award size={20} />
+                <span>{t('certModalTitle')}</span>
+              </h3>
+              <button 
+                onClick={() => setShowCertModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer', padding: '0 8px' }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', marginBottom: '16px' }}>
+              <img src={certImgUrl} style={{ width: '100%', height: 'auto', display: 'block' }} alt="Certificate" />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <a
+                href={certImgUrl}
+                download={`copyright_certificate_${Date.now()}.png`}
+                className="btn-primary"
+                style={{ flex: 1, textDecoration: 'none', background: 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)', color: '#000000', fontWeight: 800 }}
+              >
+                <Download size={18} />
+                <span>{t('downloadCertBtn')}</span>
+              </a>
+              <button
+                onClick={async () => {
+                  try {
+                    await Share.share({
+                      title: '数字版权司法确权存证证书',
+                      text: '隐形盲水印司法存证与防伪确权报告',
+                      url: certImgUrl
+                    });
+                  } catch {}
+                }}
+                className="btn-primary"
+                style={{ flex: 1, background: 'rgba(255,255,255,0.1)' }}
+              >
+                <Share2 size={18} />
+                <span>{t('shareCertBtn')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Neutral Third-Party Forensic Verification Report Modal */}
       {showForensicModal && (
         <div style={{
@@ -1674,7 +2311,7 @@ export default function App() {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
               <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                ⚖️ 第三方专业工具 (Photoshop/GIMP/Python) 独立复现与验证指导报告
+                {t('forensicTitle')}
               </h3>
               <button 
                 onClick={() => setShowForensicModal(false)}

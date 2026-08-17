@@ -7,6 +7,7 @@ export const translations = {
     tabEmbed: '多重水印添加',
     tabExtract: '联合还原提取',
     tabSimulator: '模拟抗攻击',
+    tabHistory: '存证历史',
     tabHelp: '算法说明',
     
     // Presets
@@ -16,6 +17,25 @@ export const translations = {
     presetGeneralDecrypt: '一般解密',
     presetComplexDecrypt: '复杂解密',
     presetUltimateDecrypt: '终极解密',
+
+    // Mode Toggle
+    singleMode: '单图模式',
+    batchMode: '📁 批量模式',
+    batchTitle: '多图批量暗水印嵌入',
+    batchUploadClick: '点击选择多张图片 (支持同时上传 2~30 张)',
+    batchHint: '每张图片将自动优化并排队依次嵌入水印',
+    batchProcessBtn: '一键批量生成全部暗水印',
+    batchDownloadZip: '📦 一键打包下载全部 ZIP 压缩包',
+    batchStatusProcessing: '批量处理中',
+    batchStatusDone: '已完成',
+    batchStatusWaiting: '等待中',
+
+    // Payload Types
+    payloadTypeLabel: '水印负载类型',
+    textPayload: '🔤 文本/签名',
+    logoPayload: '🖼️ 隐形图章/二维码',
+    uploadLogoClick: '点击上传 32x32 或 64x64 黑白 Logo 图章',
+    logoHint: '系统将自动二值化为像素点阵隐形嵌入',
 
     // Embed Tab
     selectAlgoTitle: '1. 选择隐藏水印方式 (可手动勾选或一键预设)',
@@ -27,6 +47,7 @@ export const translations = {
     strengthLabel: '嵌入基准强度',
     uploadSourceTitle: '3. 上传原始图片',
     uploadClickText: '点击或拖拽上传图片',
+    cameraShotBtn: '📸 相机拍照加水印',
     uploadHintText: '自动等比裁剪/压缩至 1024px，确保移动端秒级处理',
     origSize: '原图尺寸',
     optimizedSize: '已自动优化为',
@@ -52,6 +73,21 @@ export const translations = {
     exhaustiveProcessing: '正在全算法穷举扫描...',
     resultsTitle: '各算法联合还原检测与匹配度分析：',
     forensicReportBtn: '⚖️ Photoshop/第三方复现报告',
+    generateCertBtn: '📜 生成数字版权确权证书图片',
+
+    // Certificate Card Modal
+    certModalTitle: '📜 数字版权与司法确权存证证书',
+    downloadCertBtn: '下载确权证书图片',
+    shareCertBtn: '系统分享证书',
+    closeCertBtn: '关闭证书',
+
+    // History Tab
+    historyHeader: '本地离线存证历史记录',
+    historyDesc: '数据保存在本地安全离线沙箱中，保护个人隐私，随时复查与调取。',
+    noHistoryText: '暂无存证记录，去添加水印或提取水印吧！',
+    clearHistoryBtn: '清空历史',
+    historyItemEmbed: '添加水印',
+    historyItemExtract: '提取探测',
 
     // Simulator Tab
     simulatorTitle: '抗攻击/剪切压缩实测模拟器',
@@ -88,6 +124,8 @@ export const translations = {
     keyWarnToast: '未输入密钥，将尝试默认无密匙盲解密；若加密时设置了密钥，请填入密钥！',
     exhaustiveComplete: '全算法穷举深度探测完成！',
     exhaustiveFail: '穷举提取失败',
+    batchSuccessToast: '全部图片批量暗水印添加完成！',
+    historyCleared: '历史记录已清空',
 
     // Texture Advisor
     textureTitle: '图像频域复杂度诊断',
@@ -124,6 +162,7 @@ export const translations = {
     tabEmbed: 'Embed Watermark',
     tabExtract: 'Extract & Verify',
     tabSimulator: 'Attack Simulator',
+    tabHistory: 'Audit History',
     tabHelp: 'Algorithms FAQ',
 
     // Presets
@@ -133,6 +172,25 @@ export const translations = {
     presetGeneralDecrypt: 'General Scan',
     presetComplexDecrypt: 'Complex Scan',
     presetUltimateDecrypt: 'Ultimate Scan',
+
+    // Mode Toggle
+    singleMode: 'Single Photo',
+    batchMode: '📁 Batch Mode',
+    batchTitle: 'Batch Photo Invisible Watermarking',
+    batchUploadClick: 'Select multiple photos (2~30 photos at once)',
+    batchHint: 'Each photo will be auto-optimized and watermarked sequentially.',
+    batchProcessBtn: 'Batch Process All Photos',
+    batchDownloadZip: '📦 Download All as ZIP Bundle',
+    batchStatusProcessing: 'Processing',
+    batchStatusDone: 'Done',
+    batchStatusWaiting: 'Waiting',
+
+    // Payload Types
+    payloadTypeLabel: 'Watermark Payload Type',
+    textPayload: '🔤 Text / Signature',
+    logoPayload: '🖼️ Invisible Logo / QR',
+    uploadLogoClick: 'Upload 32x32 or 64x64 B&W Stamp/Logo',
+    logoHint: 'Automatically binarized into pixel bit sequence',
 
     // Embed Tab
     selectAlgoTitle: '1. Select Watermark Algorithms (Multi-select or Preset)',
@@ -144,6 +202,7 @@ export const translations = {
     strengthLabel: 'Base Embedding Strength',
     uploadSourceTitle: '3. Upload Original Photo',
     uploadClickText: 'Click or drag image to upload',
+    cameraShotBtn: '📸 Camera Shoot & Watermark',
     uploadHintText: 'Auto-scaled to 1024px for sub-second mobile processing',
     origSize: 'Original Resolution',
     optimizedSize: 'Optimized Resolution',
@@ -169,6 +228,21 @@ export const translations = {
     exhaustiveProcessing: 'Exhaustive scanning all algorithms...',
     resultsTitle: 'Extraction & Confidence Match Results:',
     forensicReportBtn: '⚖️ Photoshop/Third-Party Forensic Report',
+    generateCertBtn: '📜 Generate Copyright Proof Certificate Card',
+
+    // Certificate Card Modal
+    certModalTitle: '📜 Digital Copyright Forensic Certificate',
+    downloadCertBtn: 'Download Certificate Card',
+    shareCertBtn: 'Share Certificate',
+    closeCertBtn: 'Close',
+
+    // History Tab
+    historyHeader: 'Local Offline Audit History',
+    historyDesc: 'Data is stored securely in your local offline sandbox for complete privacy.',
+    noHistoryText: 'No records yet. Start embedding or extracting watermarks!',
+    clearHistoryBtn: 'Clear History',
+    historyItemEmbed: 'Watermark Embedded',
+    historyItemExtract: 'Watermark Extracted',
 
     // Simulator Tab
     simulatorTitle: 'Channel Attack & Robustness Simulator',
@@ -205,6 +279,8 @@ export const translations = {
     keyWarnToast: 'No safety key entered. Trying default blind extraction; fill key if encrypted with a custom seed!',
     exhaustiveComplete: 'Exhaustive all-algorithm scan completed!',
     exhaustiveFail: 'Exhaustive extraction failed',
+    batchSuccessToast: 'All photos in batch successfully watermarked!',
+    historyCleared: 'Local history cleared',
 
     // Texture Advisor
     textureTitle: 'Image Texture Complexity Diagnosis',
