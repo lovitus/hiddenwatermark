@@ -1240,7 +1240,7 @@ export default function App() {
                   onClick={() => applyPresetMode('general')}
                   style={{
                     background: selectedAlgos.length === 1 && selectedAlgos[0] === 'dct' ? '#6366f1' : 'var(--fill)',
-                    color: '#ffffff',
+                    color: selectedAlgos.length === 1 && selectedAlgos[0] === 'dct' ? '#ffffff' : 'var(--text)',
                     border: '1px solid var(--border)',
                     borderRadius: '6px',
                     padding: '4px 10px',
@@ -1255,7 +1255,7 @@ export default function App() {
                   onClick={() => applyPresetMode('complex')}
                   style={{
                     background: selectedAlgos.length === 3 && selectedAlgos.includes('dwt') ? '#8b5cf6' : 'var(--fill)',
-                    color: '#ffffff',
+                    color: selectedAlgos.length === 3 && selectedAlgos.includes('dwt') ? '#ffffff' : 'var(--text)',
                     border: '1px solid var(--border)',
                     borderRadius: '6px',
                     padding: '4px 10px',
@@ -1270,7 +1270,7 @@ export default function App() {
                   onClick={() => applyPresetMode('ultimate')}
                   style={{
                     background: selectedAlgos.length === 5 ? 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)' : 'var(--fill)',
-                    color: '#ffffff',
+                    color: selectedAlgos.length === 5 ? '#ffffff' : 'var(--text)',
                     border: '1px solid var(--border)',
                     borderRadius: '6px',
                     padding: '4px 10px',
@@ -1513,7 +1513,7 @@ export default function App() {
                   onClick={() => setShowCompareSlider(!showCompareSlider)}
                   style={{
                     background: 'var(--fill)',
-                    color: '#ffffff',
+                    color: 'var(--text)',
                     border: 'none',
                     borderRadius: '6px',
                     padding: '4px 10px',
@@ -1614,7 +1614,7 @@ export default function App() {
                         onClick={() => handleToggleAlgo(a.id)}
                         style={{
                           background: isSelected ? '#6366f1' : 'var(--fill)',
-                          color: '#ffffff',
+                          color: isSelected ? '#ffffff' : 'var(--text)',
                           border: 'none',
                           borderRadius: '6px',
                           padding: '6px 10px',
