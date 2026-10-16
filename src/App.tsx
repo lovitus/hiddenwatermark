@@ -26,9 +26,7 @@ import {
   Trash2,
   Layers,
   QrCode,
-  FlaskConical,
-  CheckCircle2,
-  XCircle
+  FlaskConical
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Toast } from '@capacitor/toast';
@@ -38,6 +36,7 @@ import { translations, Language } from './i18n/translations';
 import { createZip, ZipEntry } from './utils/zip';
 import { generateCertificateCard, CertificateData } from './utils/certificate';
 import { runAllAutomatedDiagnostics, TestCaseResult } from './utils/selfTest';
+import DiagnosticModal from './components/DiagnosticModal';
 
 // Vite inlined worker import
 import WatermarkWorker from './workers/watermark.worker?worker&inline';
@@ -2277,149 +2276,14 @@ export default function App() {
 
       {/* Automated Diagnostic Self-Test Modal */}
       {showDiagnosticModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.85)',
-          backdropFilter: 'blur(10px)',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '16px'
-        }}>
-          <div className="glass-container" style={{
-            maxWidth: '680px',
-            maxHeight: '88vh',
-            overflowY: 'auto',
-            position: 'relative',
-            background: '#090d16',
-            border: '1px solid rgba(99, 102, 241, 0.5)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px' }}>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#818cf8', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <FlaskConical size={20} />
-                <span>{t('selfTestTitle')}</span>
-              </h3>
-              <button 
-                onClick={() => setShowDiagnosticModal(false)}
-                style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer', padding: '0 8px' }}
-              >
-                ×
-              </button>
-            </div>
-
-            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '16px' }}>
-              {t('selfTestDesc')}
-            </p>
-
-            {/* Live Progress Indicator */}
-            {diagnosticRunning && (
-              <div style={{ background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '6px' }}>
-                  <span>{diagnosticProgress.currentName}</span>
-                  <span style={{ fontWeight: 700, color: '#a855f7' }}>{diagnosticProgress.current}/{diagnosticProgress.total}</span>
-                </div>
-                <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%',
-                    width: `${(diagnosticProgress.current / diagnosticProgress.total) * 100}%`,
-                    background: 'linear-gradient(90deg, #6366f1 0%, #ec4899 100%)',
-                    transition: 'width 0.2s ease'
-                  }} />
-                </div>
-              </div>
-            )}
-
-            {/* Test Results Summary Header */}
-            {diagnosticResults.length > 0 && !diagnosticRunning && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: diagnosticResults.every(r => r.status === 'pass') ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                border: `1px solid ${diagnosticResults.every(r => r.status === 'pass') ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                padding: '10px 16px',
-                borderRadius: '8px',
-                marginBottom: '16px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {diagnosticResults.every(r => r.status === 'pass') ? (
-                    <CheckCircle2 size={20} style={{ color: '#34d399' }} />
-                  ) : (
-                    <XCircle size={20} style={{ color: '#f87171' }} />
-                  )}
-                  <span style={{ fontWeight: 800, fontSize: '0.9rem', color: diagnosticResults.every(r => r.status === 'pass') ? '#34d399' : '#f87171' }}>
-                    {t('selfTestPassRate')}: {diagnosticResults.filter(r => r.status === 'pass').length}/{diagnosticResults.length} (100% 通过)
-                  </span>
-                </div>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                  总耗时: {diagnosticResults.reduce((acc, r) => acc + r.durationMs, 0)}ms
-                </span>
-              </div>
-            )}
-
-            {/* Test Cards List */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '340px', overflowY: 'auto' }}>
-              {diagnosticResults.map((test) => (
-                <div
-                  key={test.id}
-                  style={{
-                    background: 'rgba(0,0,0,0.35)',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    borderRadius: '8px',
-                    padding: '10px 14px',
-                    borderLeft: `4px solid ${test.status === 'pass' ? '#10b981' : '#ef4444'}`
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f1f5f9' }}>
-                      {test.name}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{test.durationMs}ms</span>
-                      <span style={{
-                        background: test.status === 'pass' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                        color: test.status === 'pass' ? '#34d399' : '#f87171',
-                        fontSize: '0.7rem',
-                        fontWeight: 800,
-                        padding: '2px 8px',
-                        borderRadius: '4px'
-                      }}>
-                        {test.status === 'pass' ? 'PASS' : 'FAIL'}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: test.status === 'pass' ? '#94a3b8' : '#f87171' }}>
-                    {test.details}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-              <button
-                onClick={handleRunDiagnosticSelfTest}
-                disabled={diagnosticRunning}
-                className="btn-primary"
-                style={{ flex: 1, background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)' }}
-              >
-                {diagnosticRunning ? <div className="spinner" /> : <RefreshCw size={16} />}
-                <span>{t('reRunSelfTestBtn')}</span>
-              </button>
-              <button
-                onClick={() => setShowDiagnosticModal(false)}
-                className="btn-primary"
-                style={{ width: '120px', background: 'rgba(255,255,255,0.08)' }}
-              >
-                <span>{t('closeSelfTestBtn')}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <DiagnosticModal
+          t={t}
+          running={diagnosticRunning}
+          progress={diagnosticProgress}
+          results={diagnosticResults}
+          onRerun={handleRunDiagnosticSelfTest}
+          onClose={() => setShowDiagnosticModal(false)}
+        />
       )}
 
       {/* Certificate Card Preview Modal */}

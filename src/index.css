@@ -721,3 +721,250 @@ body {
   background: #6366f1;
   color: #ffffff;
 }
+
+/* Diagnostic Console */
+.diag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: diag-fade 0.2s ease;
+}
+
+.diag-dialog {
+  width: 100%;
+  max-width: 640px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #0f1524;
+  border-color: rgba(99, 102, 241, 0.35);
+  animation: diag-pop 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.diag-dialog:hover {
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+.diag-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.diag-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #a5b4fc;
+}
+
+.diag-close {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  border-radius: 10px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.diag-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
+}
+
+.diag-desc {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+.diag-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  margin-bottom: 8px;
+}
+
+.diag-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.diag-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1 0%, #ec4899 100%);
+  transition: width 0.3s ease;
+}
+
+.diag-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid;
+}
+
+.diag-summary.ok {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  --ring: #34d399;
+}
+
+.diag-summary.bad {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  --ring: #f87171;
+}
+
+.diag-summary-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.diag-summary.ok .diag-summary-title {
+  color: #34d399;
+}
+
+.diag-summary.bad .diag-summary-title {
+  color: #f87171;
+}
+
+.diag-summary-sub {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.diag-ring {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--ring) calc(var(--pct) * 1%), rgba(255, 255, 255, 0.08) 0);
+}
+
+.diag-ring::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: #0f1524;
+}
+
+.diag-ring span {
+  position: relative;
+  font-size: 0.8rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.diag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.diag-item {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.diag-item.fail {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.diag-item-icon {
+  margin-top: 1px;
+}
+
+.diag-item-icon.pass {
+  color: #34d399;
+}
+
+.diag-item-icon.fail {
+  color: #f87171;
+}
+
+.diag-item-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.diag-item-detail {
+  margin-top: 3px;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  word-break: break-all;
+}
+
+.diag-item.fail .diag-item-detail {
+  color: #fca5a5;
+}
+
+.diag-item-time {
+  font-size: 0.7rem;
+  color: #64748b;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.diag-footer {
+  display: flex;
+  gap: 10px;
+}
+
+.diag-footer .btn-primary {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+}
+
+.diag-footer .diag-secondary {
+  flex: 0 0 120px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+@keyframes diag-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes diag-pop {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}

@@ -121,6 +121,9 @@ export const translations = {
     selfTestDesc: '在当前设备内存中自动化生成测试图像矩阵，对 6 大隐藏算法、多层融合、ZIP 打包、确权证书与 i18n 字典进行毫秒级端到端全链路诊断。',
     selfTestStarting: '正在初始化全链路自动化测试用例...',
     selfTestPassRate: '用例通过率',
+    selfTestAllPassed: '全部用例通过',
+    selfTestFailedLabel: '项用例失败',
+    selfTestTotalTime: '总耗时',
     closeSelfTestBtn: '关闭自检控制台',
     reRunSelfTestBtn: '重新执行全套自检',
 
@@ -285,6 +288,9 @@ export const translations = {
     selfTestDesc: 'Executes end-to-end automated test suites in memory: validates all 6 algorithms, multi-layer stacking, ZIP encoding, certificate generator, and i18n dictionaries.',
     selfTestStarting: 'Initializing automated test suites...',
     selfTestPassRate: 'Pass Rate',
+    selfTestAllPassed: 'All test cases passed',
+    selfTestFailedLabel: 'failed',
+    selfTestTotalTime: 'Total time',
     closeSelfTestBtn: 'Close Console',
     reRunSelfTestBtn: 'Re-run All Tests',
 

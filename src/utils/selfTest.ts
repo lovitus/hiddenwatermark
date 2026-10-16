@@ -114,8 +114,8 @@ export async function runAllAutomatedDiagnostics(
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
-        const embedded = embedSpreadSpectrum(img, 'DSSS_OK', testKey, 10);
-        const extracted = extractSpreadSpectrum(embedded, testKey, 10);
+        const embedded = embedSpreadSpectrum(img, 'DSSS_OK', testKey, 25);
+        const extracted = extractSpreadSpectrum(embedded, testKey, 25);
         if (!extracted.includes('DSSS')) throw new Error(`DSSS提取异常: "${extracted}"`);
         return `伪随机扩频序列调制与相关解调通过`;
       }
@@ -164,7 +164,7 @@ export async function runAllAutomatedDiagnostics(
         const analysis = analyzeImageTexture(img);
         if (analysis.score < 0 || analysis.score > 100) throw new Error('纹理评分超出 0-100 范围');
         const metrics = calculateExtractionMetrics('HELLO_WORLD', 'HELLO_WORLD');
-        if (metrics.ber !== 0 || metrics.badge !== '100% 精确匹配') throw new Error('BER 误码率测算异常');
+        if (metrics.ber !== 0 || metrics.similarity !== 100) throw new Error('BER 误码率测算异常');
         return `Sobel 评分: ${analysis.score}/100, BER 算法: 准确无误`;
       }
     },

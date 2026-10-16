@@ -1,6 +1,7 @@
 import { createPRNG, rgbToYcbcr, ycbcrToRgb, stringToBits, bitsToString, applyHammingEncoding, decodeHammingEncoding } from './utils';
 
 const BLOCK_SIZE = 16; // 16x16 pixels per spread-spectrum bit block
+const PN_COUNT = 256; // PN patterns are reused cyclically so block correlation does not depend on payload length
 
 // Generate a pseudo-random pattern of size 16x16 containing +1 and -1 values
 function generatePNPattern(rand: () => number): Float32Array {
@@ -50,7 +51,7 @@ export function embedSpreadSpectrum(
   // Generate PN sequences for each bit index using the seeded PRNG
   const rand = createPRNG(key);
   const pnPatterns: Float32Array[] = [];
-  for (let i = 0; i < numBits; i++) {
+  for (let i = 0; i < PN_COUNT; i++) {
     pnPatterns.push(generatePNPattern(rand));
   }
 
@@ -79,7 +80,7 @@ export function embedSpreadSpectrum(
 
     const startX = bx * BLOCK_SIZE;
     const startY = by * BLOCK_SIZE;
-    const pn = pnPatterns[bitIdx];
+    const pn = pnPatterns[i % PN_COUNT];
 
     for (let y = 0; y < BLOCK_SIZE; y++) {
       for (let x = 0; x < BLOCK_SIZE; x++) {
@@ -121,19 +122,11 @@ export function extractSpreadSpectrum(
     yChan[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
   }
 
-  const estimatedPayloadBits = 1008;
-
-  // Generate the PN sequences
   const rand = createPRNG(key);
   const pnPatterns: Float32Array[] = [];
-  for (let i = 0; i < estimatedPayloadBits; i++) {
+  for (let i = 0; i < PN_COUNT; i++) {
     pnPatterns.push(generatePNPattern(rand));
   }
-
-  const bestResult = {
-    text: "提取失败：未探测到扩频水印或密钥错误",
-    score: -1
-  };
 
   // We search over grid alignment (dx, dy) up to BLOCK_SIZE
   for (let dy = 0; dy < BLOCK_SIZE; dy += 2) { // step by 2 to make it faster
@@ -141,8 +134,6 @@ export function extractSpreadSpectrum(
       const blocksX = Math.floor((width - dx) / BLOCK_SIZE);
       const blocksY = Math.floor((height - dy) / BLOCK_SIZE);
       const totalBlocks = blocksX * blocksY;
-
-      if (totalBlocks < 64) continue;
 
       const shuffleRand = createPRNG(key + "_shuffle");
       const blockIndices = new Int32Array(totalBlocks);
@@ -157,14 +148,13 @@ export function extractSpreadSpectrum(
       // Compute correlations for each block
       const blockCorrelations = new Float32Array(totalBlocks);
       for (let i = 0; i < totalBlocks; i++) {
-        const bitIdx = i % estimatedPayloadBits;
         const blockIdx = blockIndices[i];
         const bx = blockIdx % blocksX;
         const by = Math.floor(blockIdx / blocksX);
 
         const startX = dx + bx * BLOCK_SIZE;
         const startY = dy + by * BLOCK_SIZE;
-        const pn = pnPatterns[bitIdx];
+        const pn = pnPatterns[i % PN_COUNT];
 
         let dotProduct = 0;
         for (let y = 0; y < BLOCK_SIZE; y++) {
@@ -176,38 +166,22 @@ export function extractSpreadSpectrum(
         blockCorrelations[i] = dotProduct;
       }
 
-      // Average correlation across redundant blocks to decide bit (0 or 1)
-      const consolidatedBits = new Array(estimatedPayloadBits);
-      for (let b = 0; b < estimatedPayloadBits; b++) {
-        let sum = 0;
-        let count = 0;
-        for (let i = b; i < totalBlocks; i += estimatedPayloadBits) {
-          sum += blockCorrelations[i];
-          count++;
-        }
-        consolidatedBits[b] = sum >= 0 ? 1 : 0;
-      }
+      // Payload length is unknown, so try each candidate length: the frame is 16-bit sync + 16-bit length + payload + 8-bit checksum, Hamming-coded to 7 bits per nibble
+      for (let len = 1; 70 + 14 * len <= totalBlocks; len++) {
+        const numBits = 70 + 14 * len;
+        const sums = new Float64Array(numBits);
+        for (let i = 0; i < totalBlocks; i++) sums[i % numBits] += blockCorrelations[i];
+        const consolidatedBits = Array.from(sums, s => (s >= 0 ? 1 : 0));
 
-      const decodedRawBits = decodeHammingEncoding(consolidatedBits);
+        const decodedRawBits = decodeHammingEncoding(consolidatedBits);
+        const decodedLen = decodedRawBits.slice(16, 32).reduce((acc, bit) => (acc << 1) | bit, 0);
+        if (decodedLen !== len) continue;
 
-      const header = [0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1];
-      let matches = 0;
-      for (let i = 0; i < header.length; i++) {
-        if (decodedRawBits[i] === header[i]) matches++;
-      }
-
-      if (matches > bestResult.score && matches >= header.length - 3) {
         const decodeResult = bitsToString(decodedRawBits);
-        if (decodeResult.success) {
-          bestResult.score = matches;
-          bestResult.text = decodeResult.text;
-          if (matches === header.length) {
-            return decodeResult.text;
-          }
-        }
+        if (decodeResult.success) return decodeResult.text;
       }
     }
   }
 
-  return bestResult.text;
+  return "提取失败：未探测到扩频水印或密钥错误";
 }
