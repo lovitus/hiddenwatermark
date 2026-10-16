@@ -213,7 +213,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 16px;
-  color: #ffffff;
+  color: var(--text);
   font-size: 1rem;
   transition: all 0.2s ease;
 }
@@ -315,7 +315,7 @@ body {
 .algo-name {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text);
   margin-bottom: 2px;
   display: flex;
   align-items: center;
@@ -1118,7 +1118,7 @@ body {
 
 .chip-btn:hover {
   border-color: rgba(34, 211, 238, 0.55);
-  color: #ffffff;
+  color: var(--accent-text);
   box-shadow: 0 0 14px rgba(34, 211, 238, 0.18);
 }
 
@@ -1230,9 +1230,9 @@ body {
 }
 
 .segmented-btn.active {
-  background: linear-gradient(135deg, rgba(34, 211, 238, 0.22), rgba(99, 102, 241, 0.45));
+  background: var(--accent);
   color: #ffffff;
-  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.4);
+  box-shadow: 0 4px 14px -4px var(--accent-glow);
 }
 
 .segmented-btn:not(.active):hover {
