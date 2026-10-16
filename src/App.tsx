@@ -368,7 +368,7 @@ export default function App() {
           setProgressInfo({
             step: p.step,
             total: p.total,
-            algo: algoObj ? algoObj.name.split(' ')[0] : p.algo
+            algo: algoObj ? algoObj.id.toUpperCase() : p.algo
           });
         }
       );
@@ -780,7 +780,7 @@ export default function App() {
           setProgressInfo({
             step: p.step,
             total: p.total,
-            algo: algoObj ? algoObj.name.split(' ')[0] : p.algo
+            algo: algoObj ? algoObj.id.toUpperCase() : p.algo
           });
         }
       );
@@ -834,7 +834,7 @@ export default function App() {
           setProgressInfo({
             step: p.step,
             total: p.total,
-            algo: algoObj ? algoObj.name.split(' ')[0] : p.algo
+            algo: algoObj ? algoObj.id.toUpperCase() : p.algo
           });
         }
       );
@@ -987,7 +987,7 @@ export default function App() {
           setProgressInfo({
             step: p.step,
             total: p.total,
-            algo: algoObj ? algoObj.name.split(' ')[0] : p.algo
+            algo: algoObj ? algoObj.id.toUpperCase() : p.algo
           });
         }
       );
@@ -1612,7 +1612,7 @@ export default function App() {
                           fontWeight: '600'
                         }}
                       >
-                        {a.name.split(' ')[0]}
+                        {a.id.toUpperCase()}
                       </button>
                     );
                   })}

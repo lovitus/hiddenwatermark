@@ -1195,6 +1195,12 @@ body {
   color: #22d3ee;
 }
 
+@media (max-width: 480px) {
+  .brand-tag {
+    display: none;
+  }
+}
+
 @media (max-width: 520px) {
   .guide-strip {
     grid-template-columns: 1fr;
