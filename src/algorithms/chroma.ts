@@ -163,7 +163,7 @@ export function extractChroma(
   }
 
   const bestResult = {
-    text: "提取失败：未探测到色度水印或密钥错误",
+    text: "",
     score: -1
   };
 

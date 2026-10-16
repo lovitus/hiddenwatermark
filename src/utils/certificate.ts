@@ -2,6 +2,7 @@
  * Digital Copyright Forensic Certificate Card Generator
  * Renders a high-resolution certificate card on Canvas.
  */
+import { translations } from '../i18n/translations';
 
 export interface CertificateData {
   certId: string;
@@ -25,7 +26,7 @@ export async function generateCertificateCard(data: CertificateData): Promise<st
   canvas.width = width;
   canvas.height = height;
 
-  const isEn = data.language === 'en';
+  const L = translations[data.language ?? 'zh'];
 
   // 1. Dark Tech/Glassmorphic Gradient Background
   const bgGrad = ctx.createLinearGradient(0, 0, width, height);
@@ -65,12 +66,12 @@ export async function generateCertificateCard(data: CertificateData): Promise<st
   ctx.fillStyle = '#818cf8';
   ctx.font = 'bold 20px "Segoe UI", sans-serif';
   ctx.letterSpacing = '4px';
-  ctx.fillText(isEn ? 'OFFICIAL FORENSIC IDENTIFICATION CERTIFICATE' : '数字版权与防伪隐形盲水印司法存证报告', width / 2, 100);
+  ctx.fillText(L.certHeader, width / 2, 100);
 
   ctx.fillStyle = '#f8fafc';
   ctx.font = '900 42px "Segoe UI", sans-serif';
   ctx.letterSpacing = '2px';
-  ctx.fillText(isEn ? 'DIGITAL COPYRIGHT CERTIFICATE' : '数字版权确权证书', width / 2, 160);
+  ctx.fillText(L.certTitle, width / 2, 160);
 
   // Cert ID & Timestamp Badge
   ctx.fillStyle = '#94a3b8';
@@ -145,7 +146,7 @@ export async function generateCertificateCard(data: CertificateData): Promise<st
   // Section 1: Extracted Payload
   ctx.fillStyle = '#a5b4fc';
   ctx.font = 'bold 20px "Segoe UI", sans-serif';
-  ctx.fillText(isEn ? '1. EXTRACTED PAYLOAD CONTENT' : '一、 隐形盲水印提取还原内容 (Verified Payload):', cardX + 30, cardY + 50);
+  ctx.fillText(L.certSec1, cardX + 30, cardY + 50);
 
   ctx.fillStyle = '#34d399';
   ctx.font = 'bold 28px monospace';
@@ -154,7 +155,7 @@ export async function generateCertificateCard(data: CertificateData): Promise<st
   // Section 2: Confidence & BER Metrics
   ctx.fillStyle = '#a5b4fc';
   ctx.font = 'bold 20px "Segoe UI", sans-serif';
-  ctx.fillText(isEn ? '2. FORENSIC CONFIDENCE & BIT ERROR RATE (BER)' : '二、 匹配置信度与特征误码率 (Forensic Accuracy):', cardX + 30, cardY + 160);
+  ctx.fillText(L.certSec2, cardX + 30, cardY + 160);
 
   ctx.fillStyle = '#eab308';
   ctx.font = 'bold 24px "Segoe UI", sans-serif';
@@ -163,7 +164,7 @@ export async function generateCertificateCard(data: CertificateData): Promise<st
   // Section 3: Algorithms & Channel
   ctx.fillStyle = '#a5b4fc';
   ctx.font = 'bold 20px "Segoe UI", sans-serif';
-  ctx.fillText(isEn ? '3. EMBEDDING DOMAIN & ALGORITHMS' : '三、 物理嵌入通道与算法组合 (Algorithm Domain):', cardX + 30, cardY + 265);
+  ctx.fillText(L.certSec3, cardX + 30, cardY + 265);
 
   ctx.fillStyle = '#f1f5f9';
   ctx.font = '600 20px "Segoe UI", sans-serif';
@@ -172,7 +173,7 @@ export async function generateCertificateCard(data: CertificateData): Promise<st
   // Section 4: Crypto Hash
   ctx.fillStyle = '#a5b4fc';
   ctx.font = 'bold 20px "Segoe UI", sans-serif';
-  ctx.fillText(isEn ? '4. SECURITY HASH & SEEDED KEY PROOF' : '四、 防伪签名哈希与密匙指纹 (Security Proof):', cardX + 30, cardY + 370);
+  ctx.fillText(L.certSec4, cardX + 30, cardY + 370);
 
   ctx.fillStyle = '#94a3b8';
   ctx.font = '600 18px monospace';
@@ -201,9 +202,9 @@ export async function generateCertificateCard(data: CertificateData): Promise<st
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ef4444';
   ctx.font = 'bold 16px "Segoe UI", sans-serif';
-  ctx.fillText(isEn ? 'VERIFIED' : '数字存证', sealX, sealY - 30);
+  ctx.fillText(L.certSealTop, sealX, sealY - 30);
   ctx.font = '900 24px "Segoe UI", sans-serif';
-  ctx.fillText(isEn ? 'AUTHENTIC' : '确权通过', sealX, sealY + 8);
+  ctx.fillText(L.certSealMain, sealX, sealY + 8);
   ctx.font = 'bold 13px monospace';
   ctx.fillText('FORENSIC LAB', sealX, sealY + 40);
   ctx.restore();
@@ -212,12 +213,8 @@ export async function generateCertificateCard(data: CertificateData): Promise<st
   ctx.textAlign = 'left';
   ctx.fillStyle = '#64748b';
   ctx.font = '15px "Segoe UI", sans-serif';
-  const footerText1 = isEn 
-    ? 'This certificate is generated via standard discrete cosine transform (DCT) / wavelet transform (DWT) forensic analysis.' 
-    : '声明：本存证报告通过公开离散余弦变换 (DCT) 与小波变换 (DWT) 频域特征多数表决提取生成，具备第三方可复现性。';
-  const footerText2 = isEn
-    ? 'All mathematical formulas are compliant with open-source verification protocols.'
-    : '提取结果由隐形盲水印大师引擎独立演算输出，可作为数字资产权属举证与维权参考依据。';
+  const footerText1 = L.certFooter1;
+  const footerText2 = L.certFooter2;
   ctx.fillText(footerText1, 90, height - 170);
   ctx.fillText(footerText2, 90, height - 140);
 

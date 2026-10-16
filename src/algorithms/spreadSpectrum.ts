@@ -183,5 +183,5 @@ export function extractSpreadSpectrum(
     }
   }
 
-  return "提取失败：未探测到扩频水印或密钥错误";
+  return "";
 }

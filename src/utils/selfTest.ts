@@ -14,6 +14,8 @@ import { createZip } from './zip';
 import { generateCertificateCard } from './certificate';
 import { translations } from '../i18n/translations';
 
+type TFunction = (key: keyof typeof translations['zh'], vars?: Record<string, string | number>) => string;
+
 export interface TestCaseResult {
   id: string;
   name: string;
@@ -48,6 +50,7 @@ function createSyntheticImageData(width = 256, height = 256): ImageData {
 }
 
 export async function runAllAutomatedDiagnostics(
+  t: TFunction,
   onProgress?: (current: number, total: number, currentName: string) => void
 ): Promise<TestCaseResult[]> {
   const results: TestCaseResult[] = [];
@@ -58,85 +61,85 @@ export async function runAllAutomatedDiagnostics(
     // 1. DCT
     {
       id: 'algo-dct',
-      name: '频域 DCT 扩频算法单体验证',
+      name: t('stName_dct'),
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
         const embedded = embedDCT(img, testPayload, testKey, 30);
         const extracted = extractDCT(embedded, testKey, 30);
-        if (extracted !== testPayload) throw new Error(`提取不匹配: 期望 "${testPayload}", 实际 "${extracted}"`);
-        return `成功嵌入并 100% 精确提取 (${extracted.length} 字符)`;
+        if (extracted !== testPayload) throw new Error(t('stErrMismatch', { expected: testPayload, actual: extracted }));
+        return t('stOk_dct', { n: extracted.length });
       }
     },
     // 2. Chroma DCT
     {
       id: 'algo-chroma',
-      name: '色度空间 Chroma DCT 算法单体验证',
+      name: t('stName_chroma'),
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
         const embedded = embedChroma(img, testPayload, testKey, 35);
         const extracted = extractChroma(embedded, testKey, 35);
-        if (extracted !== testPayload) throw new Error(`提取不匹配: 期望 "${testPayload}", 实际 "${extracted}"`);
-        return `Cr色度通道隐形嵌入与提取通过`;
+        if (extracted !== testPayload) throw new Error(t('stErrMismatch', { expected: testPayload, actual: extracted }));
+        return t('stOk_chroma');
       }
     },
     // 3. DWT
     {
       id: 'algo-dwt',
-      name: '小波变换 DWT Haar 算法单体验证',
+      name: t('stName_dwt'),
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
         const embedded = embedDWT(img, testPayload, testKey, 25);
         const extracted = extractDWT(embedded, testKey, 25);
-        if (extracted !== testPayload) throw new Error(`提取不匹配: 期望 "${testPayload}", 实际 "${extracted}"`);
-        return `小波细节子带 LH/HL 调制与还原通过`;
+        if (extracted !== testPayload) throw new Error(t('stErrMismatch', { expected: testPayload, actual: extracted }));
+        return t('stOk_dwt');
       }
     },
     // 4. DFT
     {
       id: 'algo-dft',
-      name: '傅里叶变换 DFT 全局频域算法单体验证',
+      name: t('stName_dft'),
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData(256, 256);
         const embedded = embedDFT(img, 'DFT_PASS_OK', testKey, 30);
         const extracted = extractDFT(embedded, testKey, 30);
-        if (!extracted.includes('DFT')) throw new Error(`DFT提取异常: "${extracted}"`);
-        return `傅里叶幅度谱调制与逆变换通过`;
+        if (!extracted.includes('DFT')) throw new Error(t('stErrDft', { actual: extracted }));
+        return t('stOk_dft');
       }
     },
     // 5. DSSS
     {
       id: 'algo-dsss',
-      name: '空域直接扩频 DSSS 算法单体验证',
+      name: t('stName_dsss'),
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
         const embedded = embedSpreadSpectrum(img, 'DSSS_OK', testKey, 25);
         const extracted = extractSpreadSpectrum(embedded, testKey, 25);
-        if (!extracted.includes('DSSS')) throw new Error(`DSSS提取异常: "${extracted}"`);
-        return `伪随机扩频序列调制与相关解调通过`;
+        if (!extracted.includes('DSSS')) throw new Error(t('stErrDsss', { actual: extracted }));
+        return t('stOk_dsss');
       }
     },
     // 6. LSB
     {
       id: 'algo-lsb',
-      name: '最低有效位 LSB 空间密写验证',
+      name: t('stName_lsb'),
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
         const embedded = embedLSB(img, testPayload, testKey, 3);
         const extracted = extractLSB(embedded, testKey, 3);
-        if (extracted !== testPayload) throw new Error(`LSB提取不匹配: "${extracted}"`);
-        return `像素微调密写与完全无损还原通过`;
+        if (extracted !== testPayload) throw new Error(t('stErrLsb', { actual: extracted }));
+        return t('stOk_lsb');
       }
     },
     // 7. Multi-Layer Combination (DCT + Chroma + DWT)
     {
       id: 'multi-layered',
-      name: '3重联合加密融合 (DCT + Chroma + DWT) 串联验证',
+      name: t('stName_multi'),
       category: 'multi' as const,
       fn: async () => {
         let img = createSyntheticImageData();
@@ -149,29 +152,29 @@ export async function runAllAutomatedDiagnostics(
         const extC = extractDWT(img, testKey, 20);
 
         if (extA !== 'MULTI_LAYER_A' || extB !== 'MULTI_LAYER_B' || extC !== 'MULTI_LAYER_C') {
-          throw new Error(`多重融合提取有偏差: A="${extA}", B="${extB}", C="${extC}"`);
+          throw new Error(t('stErrMulti', { a: extA, b: extB, c: extC }));
         }
-        return `3重频域浮点反变换无冲突串联融合成功`;
+        return t('stOk_multi');
       }
     },
     // 8. Texture & BER Calculator
     {
       id: 'engine-metrics',
-      name: 'Sobel 频域复杂度诊断与 BER 误码率测算引擎',
+      name: t('stName_metrics'),
       category: 'engine' as const,
       fn: async () => {
         const img = createSyntheticImageData();
         const analysis = analyzeImageTexture(img);
-        if (analysis.score < 0 || analysis.score > 100) throw new Error('纹理评分超出 0-100 范围');
+        if (analysis.score < 0 || analysis.score > 100) throw new Error(t('stErrScore'));
         const metrics = calculateExtractionMetrics('HELLO_WORLD', 'HELLO_WORLD');
-        if (metrics.ber !== 0 || metrics.similarity !== 100) throw new Error('BER 误码率测算异常');
-        return `Sobel 评分: ${analysis.score}/100, BER 算法: 准确无误`;
+        if (metrics.ber !== 0 || metrics.similarity !== 100) throw new Error(t('stErrBer'));
+        return t('stOk_metrics', { score: analysis.score });
       }
     },
     // 9. Zero-Dependency ZIP Builder & CRC-32
     {
       id: 'engine-zip',
-      name: '零依赖内存 PKZIP 打包引擎与 CRC-32 校验',
+      name: t('stName_zip'),
       category: 'engine' as const,
       fn: async () => {
         const encoder = new TextEncoder();
@@ -181,14 +184,14 @@ export async function runAllAutomatedDiagnostics(
           { name: 'photo_1.png', data: testFile1 },
           { name: 'photo_2.png', data: testFile2 }
         ]);
-        if (blob.size < 100 || blob.type !== 'application/zip') throw new Error(`ZIP 生成尺寸异常: ${blob.size}`);
-        return `成功生成合规 PKZIP 压缩包 (尺寸: ${blob.size} bytes)`;
+        if (blob.size < 100 || blob.type !== 'application/zip') throw new Error(t('stErrZip', { size: blob.size }));
+        return t('stOk_zip', { size: blob.size });
       }
     },
     // 10. Copyright Certificate Generator
     {
       id: 'engine-cert',
-      name: 'Canvas 1200x1600 司法确权证书卡片渲染管线',
+      name: t('stName_cert'),
       category: 'engine' as const,
       fn: async () => {
         const testImg = createSyntheticImageData(100, 100);
@@ -203,30 +206,30 @@ export async function runAllAutomatedDiagnostics(
           thumbnailUrl: thumbUrl,
           extractedPayload: 'DIAG_VERIFIED_PAYLOAD',
           algorithms: ['DCT', 'Chroma', 'DWT'],
-          confidenceScore: '100% 匹配',
+          confidenceScore: '100%',
           berScore: '0.000',
           timestamp: '2026-08-17 12:00:00',
           securityKeyHash: 'A98F7C6B',
           language: 'zh'
         });
 
-        if (!certDataUrl.startsWith('data:image/png;base64,')) throw new Error('证书 Data URL 格式异常');
-        return `高清 1200x1600 存证证书生成成功 (Base64 大小: ${certDataUrl.length} 字符)`;
+        if (!certDataUrl.startsWith('data:image/png;base64,')) throw new Error(t('stErrCert'));
+        return t('stOk_cert', { len: certDataUrl.length });
       }
     },
     // 11. i18n Translation Dictionary Completeness Parity
     {
       id: 'i18n-parity',
-      name: '中英文 (ZH & EN) 双语词条 100% 完整性对齐校验',
+      name: t('stName_i18n'),
       category: 'i18n' as const,
       fn: async () => {
         const zhKeys = Object.keys(translations.zh);
         const enKeys = Object.keys(translations.en);
         const missingInEn = zhKeys.filter(k => !(k in translations.en));
         const missingInZh = enKeys.filter(k => !(k in translations.zh));
-        if (missingInEn.length > 0) throw new Error(`英文词典缺失 Key: ${missingInEn.join(', ')}`);
-        if (missingInZh.length > 0) throw new Error(`中文词典缺失 Key: ${missingInZh.join(', ')}`);
-        return `共 ${zhKeys.length} 个多语言词条，中英双语 100% 对齐覆盖`;
+        if (missingInEn.length > 0) throw new Error(t('stErrMissingEn', { keys: missingInEn.join(', ') }));
+        if (missingInZh.length > 0) throw new Error(t('stErrMissingZh', { keys: missingInZh.join(', ') }));
+        return t('stOk_i18n', { n: zhKeys.length });
       }
     }
   ];

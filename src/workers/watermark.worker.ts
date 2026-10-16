@@ -45,7 +45,7 @@ self.onmessage = (e: MessageEvent) => {
             outputImg = embedChroma(outputImg, text, key, strength);
             break;
           default:
-            throw new Error('未知算法: ' + algo);
+            throw new Error('Unknown algorithm: ' + algo);
         }
       }
       
@@ -91,10 +91,10 @@ self.onmessage = (e: MessageEvent) => {
               resultText = extractChroma(imgData, key, strength);
               break;
             default:
-              throw new Error('未知算法: ' + algo);
+              throw new Error('Unknown algorithm: ' + algo);
           }
         } catch (err: any) {
-          resultText = `检测出错: ${err.message}`;
+          resultText = '';
         }
         results[algo] = resultText;
       }
@@ -108,7 +108,7 @@ self.onmessage = (e: MessageEvent) => {
   } catch (error: any) {
     self.postMessage({
       success: false,
-      error: error.message || '后台计算任务执行失败'
+      error: error.message || 'Background task failed'
     });
   }
 };

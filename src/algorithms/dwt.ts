@@ -196,7 +196,7 @@ export function extractDWT(
   }
 
   const bestResult = {
-    text: "提取失败：未探测到DWT水印或密钥错误",
+    text: "",
     score: -1
   };
 

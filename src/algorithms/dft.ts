@@ -19,7 +19,7 @@ export function embedDFT(
   const startY = Math.floor((height - FFT_SIZE) / 2);
 
   if (width < FFT_SIZE || height < FFT_SIZE) {
-    throw new Error(`图片尺寸过小，宽度和高度必须至少为 ${FFT_SIZE} 像素。`);
+    throw new Error(`Image too small: width and height must be at least ${FFT_SIZE}px.`);
   }
 
   // Convert center block to YCbCr, extract Y
@@ -159,7 +159,7 @@ export function extractDFT(
   const srcData = imageData.data;
 
   if (width < FFT_SIZE || height < FFT_SIZE) {
-    return "提取失败：图片尺寸小于频域分析窗口";
+    return "";
   }
 
   // Center FFT block coordinates
@@ -224,5 +224,5 @@ export function extractDFT(
   const decodedRawBits = decodeHammingEncoding(extractedBits);
 
   const decodeResult = bitsToString(decodedRawBits);
-  return decodeResult.success ? decodeResult.text : "提取失败：未探测到DFT水印或密钥错误";
+  return decodeResult.success ? decodeResult.text : "";
 }

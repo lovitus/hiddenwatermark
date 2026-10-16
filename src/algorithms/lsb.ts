@@ -55,7 +55,7 @@ export function extractLSB(
   const data = imageData.data;
   const redundancy = Math.max(1, Math.min(20, Math.floor(strength)));
   const slots = shuffledSlots(imageData.width, imageData.height, key);
-  const failure = "提取失败：未探测到LSB水印或密钥错误";
+  const failure = "";
 
   // Majority vote across the redundant copies of ECC bit `b`
   const readCodeBits = (count: number): number[] => {

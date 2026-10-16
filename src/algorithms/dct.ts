@@ -175,7 +175,7 @@ export function extractDCT(
   // We don't know the exact image shift (cropping shift).
   // We will perform a search over 8x8=64 grid alignments (dx, dy) to find the best match for the sync header.
   const bestResult = {
-    text: "提取失败：未探测到DCT水印或密钥错误",
+    text: "",
     score: -1
   };
 

@@ -341,7 +341,7 @@ export interface TextureAnalysis {
   score: number; // 0 to 100
   complexity: 'low' | 'medium' | 'high';
   recommendedStrength: number;
-  advice: string;
+  adviceKey: 'textureAdviceLow' | 'textureAdviceMid' | 'textureAdviceHigh';
 }
 
 export function analyzeImageTexture(imgData: ImageData): TextureAnalysis {
@@ -378,21 +378,21 @@ export function analyzeImageTexture(imgData: ImageData): TextureAnalysis {
       score,
       complexity: 'low',
       recommendedStrength: 15,
-      advice: '图片平滑区域较大（天空/人脸），建议使用较低强度 (15) 以避免边缘微光伪影。'
+      adviceKey: 'textureAdviceLow'
     };
   } else if (score < 60) {
     return {
       score,
       complexity: 'medium',
       recommendedStrength: 25,
-      advice: '标准照质感（常规风景/生活照），推荐基准强度 (25)，兼顾隐蔽性与抗压缩性。'
+      adviceKey: 'textureAdviceMid'
     };
   } else {
     return {
       score,
       complexity: 'high',
       recommendedStrength: 40,
-      advice: '高频纹理丰富（草地/繁复图案），可调高强度 (40) 以获得极致鲁棒性且完全无痕。'
+      adviceKey: 'textureAdviceHigh'
     };
   }
 }
@@ -400,13 +400,13 @@ export function analyzeImageTexture(imgData: ImageData): TextureAnalysis {
 export interface ConfidenceMetric {
   similarity: number; // 0 to 100%
   ber: number; // 0.0 to 1.0
-  badge: string;
+  badgeKey: 'badgeNotFound' | 'badgeExact' | 'badgeHigh' | 'badgePartial' | 'badgeDamaged';
   badgeColor: string;
 }
 
 export function calculateExtractionMetrics(extracted: string, expectedText: string = 'Secure Watermark 2026'): ConfidenceMetric {
-  if (!extracted || extracted.startsWith('检测出错') || extracted.startsWith('提取失败')) {
-    return { similarity: 0, ber: 1.0, badge: '未检测到水印', badgeColor: '#ef4444' };
+  if (!extracted) {
+    return { similarity: 0, ber: 1.0, badgeKey: 'badgeNotFound', badgeColor: '#ef4444' };
   }
 
   // Levenshtein / prefix match for similarity
@@ -415,7 +415,7 @@ export function calculateExtractionMetrics(extracted: string, expectedText: stri
 
   let matches = 0;
   const maxLen = Math.max(s1.length, s2.length);
-  if (maxLen === 0) return { similarity: 100, ber: 0, badge: '100% 完整匹配', badgeColor: '#10b981' };
+  if (maxLen === 0) return { similarity: 100, ber: 0, badgeKey: 'badgeExact', badgeColor: '#10b981' };
 
   for (let i = 0; i < Math.min(s1.length, s2.length); i++) {
     if (s1[i] === s2[i]) matches++;
@@ -425,10 +425,10 @@ export function calculateExtractionMetrics(extracted: string, expectedText: stri
   const ber = Number(((maxLen - matches) / maxLen).toFixed(3));
 
   if (similarity >= 90) {
-    return { similarity, ber, badge: `${similarity}% 高精度确权 (BER: ${ber})`, badgeColor: '#10b981' };
+    return { similarity, ber, badgeKey: 'badgeHigh', badgeColor: '#10b981' };
   } else if (similarity >= 50) {
-    return { similarity, ber, badge: `${similarity}% 部分置信 (BER: ${ber})`, badgeColor: '#f59e0b' };
+    return { similarity, ber, badgeKey: 'badgePartial', badgeColor: '#f59e0b' };
   } else {
-    return { similarity, ber, badge: `疑似受损/强攻击 (BER: ${ber})`, badgeColor: '#ef4444' };
+    return { similarity, ber, badgeKey: 'badgeDamaged', badgeColor: '#ef4444' };
   }
 }
