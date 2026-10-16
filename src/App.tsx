@@ -997,6 +997,8 @@ export default function App() {
       setIsProcessing(false);
       setProgressInfo(null);
     }
+  };
+
   return (
     <div className="min-content">
       {/* App Header */}

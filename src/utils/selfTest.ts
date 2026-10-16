@@ -3,12 +3,12 @@
  * Runs end-to-end automated test suites across all algorithms and components.
  */
 
-import { embedDct, extractDct } from '../algorithms/dct';
-import { embedChromaDct, extractChromaDct } from '../algorithms/chroma';
-import { embedDwt, extractDwt } from '../algorithms/dwt';
-import { embedDft, extractDft } from '../algorithms/dft';
-import { embedDsss, extractDsss } from '../algorithms/dsss';
-import { embedLsb, extractLsb } from '../algorithms/lsb';
+import { embedDCT, extractDCT } from '../algorithms/dct';
+import { embedChroma, extractChroma } from '../algorithms/chroma';
+import { embedDWT, extractDWT } from '../algorithms/dwt';
+import { embedDFT, extractDFT } from '../algorithms/dft';
+import { embedSpreadSpectrum, extractSpreadSpectrum } from '../algorithms/spreadSpectrum';
+import { embedLSB, extractLSB } from '../algorithms/lsb';
 import { analyzeImageTexture, calculateExtractionMetrics } from '../algorithms/utils';
 import { createZip } from './zip';
 import { generateCertificateCard } from './certificate';
@@ -62,8 +62,8 @@ export async function runAllAutomatedDiagnostics(
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
-        const embedded = embedDct(img, testPayload, testKey, 30);
-        const extracted = extractDct(embedded, testKey);
+        const embedded = embedDCT(img, testPayload, testKey, 30);
+        const extracted = extractDCT(embedded, testKey, 30);
         if (extracted !== testPayload) throw new Error(`提取不匹配: 期望 "${testPayload}", 实际 "${extracted}"`);
         return `成功嵌入并 100% 精确提取 (${extracted.length} 字符)`;
       }
@@ -75,8 +75,8 @@ export async function runAllAutomatedDiagnostics(
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
-        const embedded = embedChromaDct(img, testPayload, testKey, 35);
-        const extracted = extractChromaDct(embedded, testKey);
+        const embedded = embedChroma(img, testPayload, testKey, 35);
+        const extracted = extractChroma(embedded, testKey, 35);
         if (extracted !== testPayload) throw new Error(`提取不匹配: 期望 "${testPayload}", 实际 "${extracted}"`);
         return `Cr色度通道隐形嵌入与提取通过`;
       }
@@ -88,8 +88,8 @@ export async function runAllAutomatedDiagnostics(
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
-        const embedded = embedDwt(img, testPayload, testKey, 25);
-        const extracted = extractDwt(embedded, testKey);
+        const embedded = embedDWT(img, testPayload, testKey, 25);
+        const extracted = extractDWT(embedded, testKey, 25);
         if (extracted !== testPayload) throw new Error(`提取不匹配: 期望 "${testPayload}", 实际 "${extracted}"`);
         return `小波细节子带 LH/HL 调制与还原通过`;
       }
@@ -101,8 +101,8 @@ export async function runAllAutomatedDiagnostics(
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData(256, 256);
-        const embedded = embedDft(img, 'DFT_PASS_OK', testKey, 30);
-        const extracted = extractDft(embedded, testKey);
+        const embedded = embedDFT(img, 'DFT_PASS_OK', testKey, 30);
+        const extracted = extractDFT(embedded, testKey, 30);
         if (!extracted.includes('DFT')) throw new Error(`DFT提取异常: "${extracted}"`);
         return `傅里叶幅度谱调制与逆变换通过`;
       }
@@ -114,8 +114,8 @@ export async function runAllAutomatedDiagnostics(
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
-        const embedded = embedDsss(img, 'DSSS_OK', testKey, 10);
-        const extracted = extractDsss(embedded, testKey);
+        const embedded = embedSpreadSpectrum(img, 'DSSS_OK', testKey, 10);
+        const extracted = extractSpreadSpectrum(embedded, testKey, 10);
         if (!extracted.includes('DSSS')) throw new Error(`DSSS提取异常: "${extracted}"`);
         return `伪随机扩频序列调制与相关解调通过`;
       }
@@ -127,8 +127,8 @@ export async function runAllAutomatedDiagnostics(
       category: 'algo' as const,
       fn: async () => {
         const img = createSyntheticImageData();
-        const embedded = embedLsb(img, testPayload, testKey);
-        const extracted = extractLsb(embedded, testKey);
+        const embedded = embedLSB(img, testPayload, testKey, 3);
+        const extracted = extractLSB(embedded, testKey, 3);
         if (extracted !== testPayload) throw new Error(`LSB提取不匹配: "${extracted}"`);
         return `像素微调密写与完全无损还原通过`;
       }
@@ -140,13 +140,13 @@ export async function runAllAutomatedDiagnostics(
       category: 'multi' as const,
       fn: async () => {
         let img = createSyntheticImageData();
-        img = embedDct(img, 'MULTI_LAYER_A', testKey, 25);
-        img = embedChromaDct(img, 'MULTI_LAYER_B', testKey, 30);
-        img = embedDwt(img, 'MULTI_LAYER_C', testKey, 20);
+        img = embedDCT(img, 'MULTI_LAYER_A', testKey, 25);
+        img = embedChroma(img, 'MULTI_LAYER_B', testKey, 30);
+        img = embedDWT(img, 'MULTI_LAYER_C', testKey, 20);
 
-        const extA = extractDct(img, testKey);
-        const extB = extractChromaDct(img, testKey);
-        const extC = extractDwt(img, testKey);
+        const extA = extractDCT(img, testKey, 25);
+        const extB = extractChroma(img, testKey, 30);
+        const extC = extractDWT(img, testKey, 20);
 
         if (extA !== 'MULTI_LAYER_A' || extB !== 'MULTI_LAYER_B' || extC !== 'MULTI_LAYER_C') {
           throw new Error(`多重融合提取有偏差: A="${extA}", B="${extB}", C="${extC}"`);

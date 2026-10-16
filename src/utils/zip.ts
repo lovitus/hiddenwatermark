@@ -26,12 +26,12 @@ function crc32(buf: Uint8Array): number {
 
 export interface ZipEntry {
   name: string;
-  data: Uint8Array;
+  data: Uint8Array<ArrayBuffer>;
 }
 
 export function createZip(entries: ZipEntry[]): Blob {
-  const fileParts: Uint8Array[] = [];
-  const centralDirHeaders: Uint8Array[] = [];
+  const fileParts: BlobPart[] = [];
+  const centralDirHeaders: Uint8Array<ArrayBuffer>[] = [];
   let offset = 0;
 
   const textEncoder = new TextEncoder();
