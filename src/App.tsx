@@ -1560,7 +1560,7 @@ export default function App() {
         <div className="glass-container">
           <div className="form-group">
             <StepTitle n="01">{t('extractConfigTitle')}</StepTitle>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px', marginBottom: '16px' }}>
+            <div className="extract-config">
               <div>
                 <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>安全密钥</label>
                 <input 
@@ -1571,7 +1571,7 @@ export default function App() {
                 />
               </div>
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '6px' }}>
                   <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>待选检测算法</label>
                   <div style={{ display: 'flex', gap: '4px' }}>
                     <button 

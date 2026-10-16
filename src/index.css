@@ -1009,6 +1009,7 @@ body {
   font-size: 0.62rem;
   color: #67e8f9;
   letter-spacing: 1.5px;
+  white-space: nowrap;
 }
 
 .chip-group {
@@ -1154,6 +1155,19 @@ body {
 
 .segmented-btn:not(.active):hover {
   color: #e2e8f0;
+}
+
+.extract-config {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (min-width: 600px) {
+  .extract-config {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  }
 }
 
 .guide-strip {
