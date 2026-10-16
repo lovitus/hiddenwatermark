@@ -200,6 +200,13 @@ export interface BatchItem {
   resultUrl?: string;
 }
 
+const StepTitle = ({ n, children }: { n: string; children: React.ReactNode }) => (
+  <div className="step-title">
+    <span className="step-num">{n}</span>
+    <span>{children}</span>
+  </div>
+);
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'embed' | 'extract' | 'simulator' | 'history' | 'help'>('embed');
   
@@ -1001,170 +1008,222 @@ export default function App() {
   return (
     <div className="min-content">
       {/* App Header */}
-      <header className="app-header" style={{ position: 'relative' }}>
-        <div style={{ position: 'absolute', top: '0px', right: '12px', display: 'flex', gap: '8px' }}>
-          <button
-            onClick={handleRunDiagnosticSelfTest}
-            style={{
-              background: 'rgba(99, 102, 241, 0.15)',
-              color: '#a5b4fc',
-              border: '1px solid rgba(99, 102, 241, 0.3)',
-              borderRadius: '20px',
-              padding: '4px 12px',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
-            }}
-          >
-            <FlaskConical size={14} style={{ color: '#818cf8' }} />
-            <span>{lang === 'zh' ? '自检诊断' : 'Self-Test'}</span>
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand-logo"><Shield size={20} /></div>
+          <span className="brand-tag">DEFENSE · WATERMARK</span>
+        </div>
+        <div className="chip-group">
+          <button className="chip-btn" onClick={handleRunDiagnosticSelfTest}>
+            <FlaskConical size={14} />
+            <span>{lang === 'zh' ? '自检' : 'Self-Test'}</span>
           </button>
-
           <button
+            className="chip-btn"
             onClick={() => {
               const nextLang = lang === 'zh' ? 'en' : 'zh';
               setLang(nextLang);
               showToast(nextLang === 'zh' ? '已切换至中文 (Simplified Chinese)' : 'Switched to English', 'info');
             }}
-            style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              color: '#ffffff',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '20px',
-              padding: '4px 12px',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
-            }}
           >
-            <Globe size={14} style={{ color: '#818cf8' }} />
-            <span>{lang === 'zh' ? 'English' : '中文'}</span>
+            <Globe size={14} />
+            <span>{lang === 'zh' ? 'EN' : '中文'}</span>
           </button>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '8px' }}>
-          <Shield size={38} className="upload-icon" style={{ animation: 'none', color: '#6366f1' }} />
-          <h1 className="app-title">{t('appTitle')}</h1>
-        </div>
-        <p className="app-subtitle">{t('appSubtitle')}</p>
       </header>
+
+      <section className="hero">
+        <h1 className="hero-title">{t('appTitle')}</h1>
+        <p className="hero-sub">{t('appSubtitle')}</p>
+      </section>
 
       {/* Tabs Navigation */}
       <nav className="tabs-navigation">
-        <button 
-          className={`tab-btn ${activeTab === 'embed' ? 'active' : ''}`}
-          onClick={() => setActiveTab('embed')}
-        >
+        <button className={`tab-btn ${activeTab === 'embed' ? 'active' : ''}`} onClick={() => setActiveTab('embed')}>
           <Sparkles size={20} />
           <span>{t('tabEmbed')}</span>
+          <span className="tab-caption">{t('tabEmbedDesc')}</span>
         </button>
-        <button 
-          className={`tab-btn ${activeTab === 'extract' ? 'active' : ''}`}
-          onClick={() => setActiveTab('extract')}
-        >
+        <button className={`tab-btn ${activeTab === 'extract' ? 'active' : ''}`} onClick={() => setActiveTab('extract')}>
           <Unlock size={20} />
           <span>{t('tabExtract')}</span>
+          <span className="tab-caption">{t('tabExtractDesc')}</span>
         </button>
-        <button 
-          className={`tab-btn ${activeTab === 'simulator' ? 'active' : ''}`}
-          onClick={() => setActiveTab('simulator')}
-        >
+        <button className={`tab-btn ${activeTab === 'simulator' ? 'active' : ''}`} onClick={() => setActiveTab('simulator')}>
           <Activity size={20} />
           <span>{t('tabSimulator')}</span>
+          <span className="tab-caption">{t('tabSimulatorDesc')}</span>
         </button>
-        <button 
-          className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
-          onClick={() => setActiveTab('history')}
-        >
+        <button className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
           <HistoryIcon size={20} />
           <span>{t('tabHistory')}</span>
+          <span className="tab-caption">{t('tabHistoryDesc')}</span>
         </button>
-        <button 
-          className={`tab-btn ${activeTab === 'help' ? 'active' : ''}`}
-          onClick={() => setActiveTab('help')}
-        >
+        <button className={`tab-btn ${activeTab === 'help' ? 'active' : ''}`} onClick={() => setActiveTab('help')}>
           <HelpCircle size={20} />
           <span>{t('tabHelp')}</span>
+          <span className="tab-caption">{t('tabHelpDesc')}</span>
         </button>
       </nav>
 
       {/* Dynamic Tabs Content */}
       {activeTab === 'embed' && (
         <div className="glass-container">
-          {/* Mode Switcher: Single vs Batch */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => setIsBatchMode(false)}
-                style={{
-                  background: !isBatchMode ? '#6366f1' : 'rgba(255,255,255,0.06)',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '6px 14px',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
+          <div className="guide-strip">
+            <div className="guide-item"><b>01</b><span>{t('guideStep1')}</span></div>
+            <div className="guide-item"><b>02</b><span>{t('guideStep2')}</span></div>
+            <div className="guide-item"><b>03</b><span>{t('guideStep3')}</span></div>
+          </div>
+
+          <div className="mode-bar">
+            <div className="segmented">
+              <button className={`segmented-btn ${!isBatchMode ? 'active' : ''}`} onClick={() => setIsBatchMode(false)}>
                 <ImageIcon size={14} />
                 <span>{t('singleMode')}</span>
               </button>
-              <button
-                onClick={() => setIsBatchMode(true)}
-                style={{
-                  background: isBatchMode ? '#6366f1' : 'rgba(255,255,255,0.06)',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '6px 14px',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
+              <button className={`segmented-btn ${isBatchMode ? 'active' : ''}`} onClick={() => setIsBatchMode(true)}>
                 <FolderArchive size={14} />
                 <span>{t('batchMode')}</span>
               </button>
             </div>
-            <button
-              onClick={handleCameraCapture}
-              style={{
-                background: 'rgba(16, 185, 129, 0.15)',
-                color: '#34d399',
-                border: '1px solid rgba(16, 185, 129, 0.3)',
-                borderRadius: '8px',
-                padding: '6px 12px',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
+            <button className="chip-btn" onClick={handleCameraCapture}>
               <CameraIcon size={14} />
               <span>{t('cameraShotBtn')}</span>
             </button>
           </div>
 
+          {/* Single Mode Upload vs Batch Mode Upload */}
+          {!isBatchMode ? (
+            <div className="form-group">
+              <StepTitle n="01">{t('uploadSourceTitle')}</StepTitle>
+              {!sourceImgUrl ? (
+                <div className="upload-zone" onClick={() => fileInputRef.current?.click()}>
+                  <ImageIcon size={40} className="upload-icon" />
+                  <span className="upload-text">{t('uploadClickText')}</span>
+                  <span className="upload-hint">{t('uploadHintText')}</span>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    style={{ display: 'none' }} 
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(e, 'source')}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <div className="preview-container">
+                    <img src={sourceImgUrl} className="preview-img" alt="Source" />
+                    <button className="remove-btn" onClick={() => { setSourceImgUrl(null); setTextureAnalysis(null); }}>×</button>
+                  </div>
+                  {imageMeta && (
+                    <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '6px' }}>
+                        {t('origSize')}: {imageMeta.origW} × {imageMeta.origH}
+                      </span>
+                      {imageMeta.origW !== imageMeta.procW && (
+                        <span style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', padding: '3px 10px', borderRadius: '6px', fontWeight: '600' }}>
+                          {t('optimizedSize')}: {imageMeta.procW} × {imageMeta.procH} ({t('memOverflowGuard')})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label className="form-label" style={{ margin: 0 }}>{t('batchTitle')}</label>
+                {batchFiles.length > 0 && (
+                  <button
+                    onClick={() => setBatchFiles([])}
+                    style={{ background: 'none', border: 'none', color: '#f87171', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Trash2 size={12} />
+                    <span>清空队列</span>
+                  </button>
+                )}
+              </div>
+
+              <div 
+                className="upload-zone" 
+                onClick={() => batchInputRef.current?.click()}
+                style={{ padding: '24px 16px', marginBottom: '12px' }}
+              >
+                <FolderArchive size={36} className="upload-icon" style={{ color: '#818cf8' }} />
+                <span className="upload-text">{t('batchUploadClick')}</span>
+                <span className="upload-hint">{t('batchHint')}</span>
+                <input 
+                  type="file" 
+                  ref={batchInputRef} 
+                  style={{ display: 'none' }} 
+                  accept="image/*" 
+                  multiple 
+                  onChange={handleBatchUpload}
+                />
+              </div>
+
+              {batchFiles.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
+                  {batchFiles.map((file, idx) => (
+                    <div 
+                      key={file.id} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        background: 'rgba(0,0,0,0.3)', 
+                        padding: '8px 12px', 
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255,255,255,0.05)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <img src={file.origUrl} style={{ width: '36px', height: '36px', objectFit: 'cover', borderRadius: '4px' }} alt="" />
+                        <div style={{ fontSize: '0.8rem', color: '#f1f5f9', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {file.name}
+                        </div>
+                      </div>
+                      <div>
+                        {file.status === 'waiting' && <span style={{ fontSize: '0.7rem', color: '#94a3b8', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '4px' }}>{t('batchStatusWaiting')}</span>}
+                        {file.status === 'processing' && <span style={{ fontSize: '0.7rem', color: '#a5b4fc', background: 'rgba(99, 102, 241, 0.2)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>{t('batchStatusProcessing')}...</span>}
+                        {file.status === 'done' && <span style={{ fontSize: '0.7rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.2)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>✓ {t('batchStatusDone')}</span>}
+                        {file.status === 'error' && <span style={{ fontSize: '0.7rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>失败</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {batchFiles.length > 0 && (
+                <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                  <button
+                    className="btn-primary"
+                    onClick={handleBatchEmbed}
+                    disabled={isProcessing}
+                    style={{ flex: 1 }}
+                  >
+                    {isProcessing ? <div className="spinner" /> : <Shield size={18} />}
+                    <span>{t('batchProcessBtn')} ({batchFiles.length})</span>
+                  </button>
+                  {batchFiles.some(f => f.status === 'done') && (
+                    <button
+                      className="btn-primary"
+                      onClick={handleDownloadBatchZip}
+                      style={{ flex: 1.2, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+                    >
+                      <Download size={18} />
+                      <span>{t('batchDownloadZip')}</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="form-group">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-              <label className="form-label" style={{ margin: 0 }}>{t('selectAlgoTitle')}</label>
+              <StepTitle n="02">{t('selectAlgoTitle')}</StepTitle>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button 
                   onClick={() => applyPresetMode('general')}
@@ -1244,7 +1303,7 @@ export default function App() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">{t('paramConfigTitle')}</label>
+            <StepTitle n="03">{t('paramConfigTitle')}</StepTitle>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {/* Payload Type Selector */}
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -1396,135 +1455,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Single Mode Upload vs Batch Mode Upload */}
-          {!isBatchMode ? (
-            <div className="form-group">
-              <label className="form-label">{t('uploadSourceTitle')}</label>
-              {!sourceImgUrl ? (
-                <div className="upload-zone" onClick={() => fileInputRef.current?.click()}>
-                  <ImageIcon size={40} className="upload-icon" />
-                  <span className="upload-text">{t('uploadClickText')}</span>
-                  <span className="upload-hint">{t('uploadHintText')}</span>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    style={{ display: 'none' }} 
-                    accept="image/*"
-                    onChange={(e) => handleImageUpload(e, 'source')}
-                  />
-                </div>
-              ) : (
-                <div>
-                  <div className="preview-container">
-                    <img src={sourceImgUrl} className="preview-img" alt="Source" />
-                    <button className="remove-btn" onClick={() => { setSourceImgUrl(null); setTextureAnalysis(null); }}>×</button>
-                  </div>
-                  {imageMeta && (
-                    <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '6px' }}>
-                        {t('origSize')}: {imageMeta.origW} × {imageMeta.origH}
-                      </span>
-                      {imageMeta.origW !== imageMeta.procW && (
-                        <span style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', padding: '3px 10px', borderRadius: '6px', fontWeight: '600' }}>
-                          {t('optimizedSize')}: {imageMeta.procW} × {imageMeta.procH} ({t('memOverflowGuard')})
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="form-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <label className="form-label" style={{ margin: 0 }}>{t('batchTitle')}</label>
-                {batchFiles.length > 0 && (
-                  <button
-                    onClick={() => setBatchFiles([])}
-                    style={{ background: 'none', border: 'none', color: '#f87171', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <Trash2 size={12} />
-                    <span>清空队列</span>
-                  </button>
-                )}
-              </div>
-
-              <div 
-                className="upload-zone" 
-                onClick={() => batchInputRef.current?.click()}
-                style={{ padding: '24px 16px', marginBottom: '12px' }}
-              >
-                <FolderArchive size={36} className="upload-icon" style={{ color: '#818cf8' }} />
-                <span className="upload-text">{t('batchUploadClick')}</span>
-                <span className="upload-hint">{t('batchHint')}</span>
-                <input 
-                  type="file" 
-                  ref={batchInputRef} 
-                  style={{ display: 'none' }} 
-                  accept="image/*" 
-                  multiple 
-                  onChange={handleBatchUpload}
-                />
-              </div>
-
-              {batchFiles.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
-                  {batchFiles.map((file, idx) => (
-                    <div 
-                      key={file.id} 
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between', 
-                        background: 'rgba(0,0,0,0.3)', 
-                        padding: '8px 12px', 
-                        borderRadius: '8px',
-                        border: '1px solid rgba(255,255,255,0.05)'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <img src={file.origUrl} style={{ width: '36px', height: '36px', objectFit: 'cover', borderRadius: '4px' }} alt="" />
-                        <div style={{ fontSize: '0.8rem', color: '#f1f5f9', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {file.name}
-                        </div>
-                      </div>
-                      <div>
-                        {file.status === 'waiting' && <span style={{ fontSize: '0.7rem', color: '#94a3b8', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '4px' }}>{t('batchStatusWaiting')}</span>}
-                        {file.status === 'processing' && <span style={{ fontSize: '0.7rem', color: '#a5b4fc', background: 'rgba(99, 102, 241, 0.2)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>{t('batchStatusProcessing')}...</span>}
-                        {file.status === 'done' && <span style={{ fontSize: '0.7rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.2)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>✓ {t('batchStatusDone')}</span>}
-                        {file.status === 'error' && <span style={{ fontSize: '0.7rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>失败</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {batchFiles.length > 0 && (
-                <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-                  <button
-                    className="btn-primary"
-                    onClick={handleBatchEmbed}
-                    disabled={isProcessing}
-                    style={{ flex: 1 }}
-                  >
-                    {isProcessing ? <div className="spinner" /> : <Shield size={18} />}
-                    <span>{t('batchProcessBtn')} ({batchFiles.length})</span>
-                  </button>
-                  {batchFiles.some(f => f.status === 'done') && (
-                    <button
-                      className="btn-primary"
-                      onClick={handleDownloadBatchZip}
-                      style={{ flex: 1.2, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
-                    >
-                      <Download size={18} />
-                      <span>{t('batchDownloadZip')}</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
           {!isBatchMode && sourceImgUrl && (
             <button 
               className="btn-primary" 
@@ -1629,7 +1559,7 @@ export default function App() {
       {activeTab === 'extract' && (
         <div className="glass-container">
           <div className="form-group">
-            <label className="form-label">1. 配置检测参数 (选择要并行检测的算法及安全密钥)</label>
+            <StepTitle n="01">{t('extractConfigTitle')}</StepTitle>
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px', marginBottom: '16px' }}>
               <div>
                 <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>安全密钥</label>
@@ -1692,7 +1622,7 @@ export default function App() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">2. 上传待检测图片</label>
+            <StepTitle n="02">{t('uploadExtractTitle')}</StepTitle>
             {!watermarkedImgUrl ? (
               <div className="upload-zone" onClick={() => extractInputRef.current?.click()}>
                 <ImageIcon size={40} className="upload-icon" />

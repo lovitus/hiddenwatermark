@@ -40,6 +40,37 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: Configure fixed signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > android/app/hiddenwatermark.jks
+          python3 - <<'PY'
+          path = 'android/app/build.gradle'
+          src = open(path).read()
+          assert '    buildTypes {' in src, 'buildTypes block not found'
+          signing = '\n'.join([
+              '    signingConfigs {',
+              '        hiddenwatermark {',
+              "            storeFile file('hiddenwatermark.jks')",
+              "            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')",
+              "            keyAlias System.getenv('ANDROID_KEY_ALIAS')",
+              "            keyPassword System.getenv('ANDROID_KEY_PASSWORD')",
+              '        }',
+              '    }',
+          ]) + '\n'
+          debug = '\n'.join([
+              '        debug {',
+              '            signingConfig signingConfigs.hiddenwatermark',
+              '        }',
+          ]) + '\n'
+          src = src.replace('    buildTypes {', signing + '    buildTypes {\n' + debug, 1)
+          open(path, 'w').write(src)
+          PY
+
       - name: Build Android APK
         run: |
           cd android

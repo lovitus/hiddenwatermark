@@ -24,3 +24,7 @@ build/
 # Capacitor native folders (optional to commit, but since we generate dynamically we ignore them)
 android/
 ios/
+
+# Signing keystores (never commit)
+*.jks
+*.keystore
