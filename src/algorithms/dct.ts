@@ -1,4 +1,4 @@
-import { createPRNG, rgbToYcbcr, ycbcrToRgb, stringToBits, bitsToString, applyHammingEncoding, decodeHammingEncoding } from './utils';
+import { createPRNG, rgbToYcbcr, ycbcrToRgb, stringToBits, bitsToString, applyHammingEncoding, decodeHammingEncoding, consolidateFrame } from './utils';
 
 // Precomputed 8x8 DCT cosine coefficients table
 const COS_TABLE = new Float32Array(8 * 8);
@@ -182,7 +182,6 @@ export function extractDCT(
   // We set a reasonable cap for estimated payload length
   // e.g. up to 1000 bits. Standard watermark length is smaller.
   // We can scan up to 2000 bits.
-  const estimatedPayloadBits = 1008; // divisible by 7 (Hamming) and 8
 
   // Mid-frequency coefficients
   const u1 = 3, v1 = 4;
@@ -232,20 +231,7 @@ export function extractDCT(
         rawExtracted[i] = a >= b ? 1 : 0;
       }
 
-      // Perform majority voting to consolidate bits
-      const consolidatedBits = new Array(estimatedPayloadBits);
-      for (let b = 0; b < estimatedPayloadBits; b++) {
-        let sum = 0;
-        let count = 0;
-        for (let i = b; i < totalBlocks; i += estimatedPayloadBits) {
-          sum += rawExtracted[i];
-          count++;
-        }
-        consolidatedBits[b] = sum >= (count / 2) ? 1 : 0;
-      }
-
-      // Decode Hamming ECC
-      const decodedRawBits = decodeHammingEncoding(consolidatedBits);
+      const decodedRawBits = consolidateFrame(rawExtracted) ?? [];
 
       // Verify header match score
       // Sync header: 0x5A, 0xA5 (16 bits): [0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1]

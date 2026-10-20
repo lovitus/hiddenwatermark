@@ -1,4 +1,4 @@
-import { createPRNG, rgbToYcbcr, ycbcrToRgb, stringToBits, bitsToString, applyHammingEncoding, decodeHammingEncoding } from './utils';
+import { createPRNG, rgbToYcbcr, ycbcrToRgb, stringToBits, bitsToString, applyHammingEncoding, decodeHammingEncoding, consolidateFrame } from './utils';
 
 // 2D Haar DWT for 8x8 block
 function dwtHaar8x8(block: Float32Array, ll: Float32Array, lh: Float32Array, hl: Float32Array, hh: Float32Array) {
@@ -200,7 +200,6 @@ export function extractDWT(
     score: -1
   };
 
-  const estimatedPayloadBits = 1008;
   const targetIdx = 5; // LH(1,1) & HL(1,1)
 
   for (let dy = 0; dy < 8; dy++) {
@@ -248,18 +247,7 @@ export function extractDWT(
         rawExtracted[i] = a >= b ? 1 : 0;
       }
 
-      const consolidatedBits = new Array(estimatedPayloadBits);
-      for (let b = 0; b < estimatedPayloadBits; b++) {
-        let sum = 0;
-        let count = 0;
-        for (let i = b; i < totalBlocks; i += estimatedPayloadBits) {
-          sum += rawExtracted[i];
-          count++;
-        }
-        consolidatedBits[b] = sum >= (count / 2) ? 1 : 0;
-      }
-
-      const decodedRawBits = decodeHammingEncoding(consolidatedBits);
+      const decodedRawBits = consolidateFrame(rawExtracted) ?? [];
 
       const header = [0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1];
       let matches = 0;

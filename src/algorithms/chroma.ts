@@ -1,4 +1,4 @@
-import { createPRNG, rgbToYcbcr, ycbcrToRgb, stringToBits, bitsToString, applyHammingEncoding, decodeHammingEncoding } from './utils';
+import { createPRNG, rgbToYcbcr, ycbcrToRgb, stringToBits, bitsToString, applyHammingEncoding, decodeHammingEncoding, consolidateFrame } from './utils';
 
 // We reuse the precomputed cosine tables and block-DCT concept, but apply it to the Cr (Chrominance Red) or Cb (Chrominance Blue) channel.
 // Because human visual system (HVS) is less sensitive to chrominance, we can increase the embedding strength here for high robustness.
@@ -167,7 +167,6 @@ export function extractChroma(
     score: -1
   };
 
-  const estimatedPayloadBits = 1008;
   const u1 = 3, v1 = 4;
   const u2 = 4, v2 = 3;
 
@@ -213,18 +212,7 @@ export function extractChroma(
         rawExtracted[i] = a >= b ? 1 : 0;
       }
 
-      const consolidatedBits = new Array(estimatedPayloadBits);
-      for (let b = 0; b < estimatedPayloadBits; b++) {
-        let sum = 0;
-        let count = 0;
-        for (let i = b; i < totalBlocks; i += estimatedPayloadBits) {
-          sum += rawExtracted[i];
-          count++;
-        }
-        consolidatedBits[b] = sum >= (count / 2) ? 1 : 0;
-      }
-
-      const decodedRawBits = decodeHammingEncoding(consolidatedBits);
+      const decodedRawBits = consolidateFrame(rawExtracted) ?? [];
 
       const header = [0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1];
       let matches = 0;

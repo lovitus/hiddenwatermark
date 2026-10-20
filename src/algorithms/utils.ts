@@ -152,6 +152,24 @@ export function bitsToString(bits: number[]): DecodeResult {
   return { text, success, bitErrorRate };
 }
 
+// Recover a Hamming-coded frame from per-block raw bits by majority vote, trying each
+// candidate payload length and accepting the one whose length field is self-consistent.
+export function consolidateFrame(rawBits: ArrayLike<number>, maxPayloadBytes = 2048): number[] | null {
+  const total = rawBits.length;
+  for (let len = 1; len <= maxPayloadBytes; len++) {
+    const codeBits = 7 * Math.ceil((32 + 8 * len + 8) / 4);
+    if (codeBits > total) break;
+    const sums = new Float64Array(codeBits);
+    const counts = new Uint32Array(codeBits);
+    for (let i = 0; i < total; i++) { sums[i % codeBits] += rawBits[i]; counts[i % codeBits]++; }
+    const hard = Array.from(sums, (s, b) => (s >= counts[b] / 2 ? 1 : 0));
+    const decoded = decodeHammingEncoding(hard);
+    const decodedLen = decoded.slice(16, 32).reduce((acc, bit) => (acc << 1) | bit, 0);
+    if (decodedLen === len) return decoded;
+  }
+  return null;
+}
+
 // 1D Radix-2 FFT
 export function fft1D(re: Float32Array, im: Float32Array, invert: boolean = false) {
   const n = re.length;

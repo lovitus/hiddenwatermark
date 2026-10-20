@@ -81,7 +81,8 @@ export function embedDFT(
     pairs.push({ u1: c1.u, v1: c1.v, u2: c2.u, v2: c2.v });
   }
 
-  const delta = Math.max(5, strength * 2);
+  // Scaled to exceed the 8-bit rounding noise floor of the FFT magnitudes
+  const delta = Math.max(5, strength * 2) * 8;
 
   // Embed bits in magnitude spectrum
   for (let i = 0; i < numBits; i++) {
@@ -181,7 +182,6 @@ export function extractDFT(
   // Perform 2D FFT
   fft2D(yRe, yIm, FFT_SIZE, false);
 
-  const estimatedPayloadBits = 1008;
 
   // Generate the coordinate pairs using same seed key
   const rand = createPRNG(key);
@@ -203,26 +203,22 @@ export function extractDFT(
     coords[j] = tmp;
   }
 
-  const pairs: Array<{ u1: number, v1: number, u2: number, v2: number }> = [];
-  for (let i = 0; i < estimatedPayloadBits; i++) {
-    if (2 * i + 1 >= coords.length) break;
+  const maxPairs = Math.floor(coords.length / 2);
+  const allBits: number[] = [];
+  for (let i = 0; i < maxPairs; i++) {
     const c1 = coords[2 * i];
     const c2 = coords[2 * i + 1];
-    pairs.push({ u1: c1.u, v1: c1.v, u2: c2.u, v2: c2.v });
+    const mag1 = Math.sqrt(yRe[c1.u * FFT_SIZE + c1.v] ** 2 + yIm[c1.u * FFT_SIZE + c1.v] ** 2);
+    const mag2 = Math.sqrt(yRe[c2.u * FFT_SIZE + c2.v] ** 2 + yIm[c2.u * FFT_SIZE + c2.v] ** 2);
+    allBits.push(mag1 >= mag2 ? 1 : 0);
   }
 
-  // Extract bits
-  const extractedBits: number[] = [];
-  for (let i = 0; i < pairs.length; i++) {
-    const { u1, v1, u2, v2 } = pairs[i];
-    const mag1 = Math.sqrt(yRe[u1 * FFT_SIZE + v1] ** 2 + yIm[u1 * FFT_SIZE + v1] ** 2);
-    const mag2 = Math.sqrt(yRe[u2 * FFT_SIZE + v2] ** 2 + yIm[u2 * FFT_SIZE + v2] ** 2);
-    extractedBits.push(mag1 >= mag2 ? 1 : 0);
+  // One pair per ECC bit, so the frame is a prefix; accept the candidate length whose length field matches
+  for (let len = 1; 7 * Math.ceil((32 + 8 * len + 8) / 4) <= allBits.length; len++) {
+    const decoded = decodeHammingEncoding(allBits.slice(0, 7 * Math.ceil((32 + 8 * len + 8) / 4)));
+    if (decoded.slice(16, 32).reduce((acc, bit) => (acc << 1) | bit, 0) !== len) continue;
+    const decodeResult = bitsToString(decoded);
+    if (decodeResult.success) return decodeResult.text;
   }
-
-  // Decode Hamming ECC
-  const decodedRawBits = decodeHammingEncoding(extractedBits);
-
-  const decodeResult = bitsToString(decodedRawBits);
-  return decodeResult.success ? decodeResult.text : "";
+  return "";
 }
