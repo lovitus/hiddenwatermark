@@ -35,6 +35,9 @@ import { Toast } from '@capacitor/toast';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { analyzeImageTexture, calculateExtractionMetrics, TextureAnalysis } from './algorithms/utils';
 import { translations, Language } from './i18n/translations';
+import { isAdvancedSelection, hasAdvancedQuota, recordAdvancedUse, remainingAdvancedQuota, setSubscribed } from './utils/entitlement';
+import { purchasePlan, restorePurchases, Plan } from './utils/purchase';
+import PaywallModal from './components/PaywallModal';
 import { createZip, ZipEntry } from './utils/zip';
 import { generateCertificateCard, CertificateData } from './utils/certificate';
 import { runAllAutomatedDiagnostics, TestCaseResult } from './utils/selfTest';
@@ -350,6 +353,34 @@ export default function App() {
   };
 
   // Exhaustive Extract: Automatically tests all 6 algorithms
+  const [showPaywall, setShowPaywall] = useState(false);
+
+  // Gate an advanced operation: allowed with quota or subscription, otherwise shows the paywall
+  const requireAdvanced = (): boolean => {
+    if (hasAdvancedQuota()) return true;
+    setShowPaywall(true);
+    return false;
+  };
+
+  const handlePurchase = async (plan: Plan) => {
+    try {
+      const ok = await purchasePlan(plan);
+      if (ok) { setSubscribed(true); setShowPaywall(false); showToast(t('paywallSubscribed'), 'success'); }
+    } catch {
+      showToast(t('paywallNotConnected'), 'error');
+    }
+  };
+
+  const handleRestore = async () => {
+    try {
+      const ok = await restorePurchases();
+      if (ok) { setSubscribed(true); setShowPaywall(false); showToast(t('paywallSubscribed'), 'success'); }
+      else showToast(t('paywallNoPurchase'), 'info');
+    } catch {
+      showToast(t('paywallNotConnected'), 'error');
+    }
+  };
+
   const handleExhaustiveExtract = async () => {
     if (!watermarkedImgUrl) return;
     const allAlgoIds = ALGORITHMS.map(a => a.id);
@@ -635,6 +666,7 @@ export default function App() {
   // Sequential Batch Embedding Queue
   const handleBatchEmbed = async () => {
     if (batchFiles.length === 0) return;
+    if (!requireAdvanced()) return;
     setIsProcessing(true);
     setStatusMsg(t('batchStatus'));
 
@@ -673,6 +705,7 @@ export default function App() {
     setIsProcessing(false);
     setProgressInfo(null);
     setStatusMsg('');
+    recordAdvancedUse();
     showToast(t('batchSuccessToast'), 'success');
     addHistoryRecord({
       type: 'embed',
@@ -714,6 +747,7 @@ export default function App() {
   // Generate Digital Copyright Certificate Card
   const handleGenerateCertificate = async () => {
     if (!watermarkedImgUrl) return;
+    if (!requireAdvanced()) return;
     try {
       showToast(t('certGenerating'), 'info');
       const firstAlgo = selectedAlgos[0] || 'dct';
@@ -733,6 +767,7 @@ export default function App() {
       });
 
       setCertImgUrl(certUrl);
+      recordAdvancedUse();
       setShowCertModal(true);
     } catch (err: any) {
       showToast(`${t('certFailed')}: ${err.message}`, 'error');
@@ -770,6 +805,7 @@ export default function App() {
       showToast(t('selectOneAlgoEmbed'), 'error');
       return;
     }
+    if (isAdvancedSelection(selectedAlgos) && !requireAdvanced()) return;
     setIsProcessing(true);
     setProgressInfo({ step: 0, total: selectedAlgos.length, algo: t('initEngine') });
     setStatusMsg(t('embedStatus', { algos: selectedAlgos.join(' -> ') }));
@@ -800,6 +836,7 @@ export default function App() {
       const outputImgData = new ImageData(new Uint8ClampedArray(res.pixels), imgData.width, imgData.height);
       const finalUrl = imageDataToUrl(outputImgData);
       setWatermarkedImgUrl(finalUrl);
+      if (isAdvancedSelection(selectedAlgos)) recordAdvancedUse();
       showToast(t('embedSuccessToast'), 'success');
       setStatusMsg(t('embedDoneStatus'));
       addHistoryRecord({
@@ -1731,7 +1768,7 @@ export default function App() {
                     <span>{t('generateCertBtn')}</span>
                   </button>
                   <button
-                    onClick={() => setShowForensicModal(true)}
+                    onClick={() => { if (requireAdvanced()) { recordAdvancedUse(); setShowForensicModal(true); } }}
                     style={{
                       background: 'rgba(56, 189, 248, 0.15)',
                       color: 'var(--info-text)',
@@ -2216,6 +2253,17 @@ export default function App() {
       )}
 
       {/* Automated Diagnostic Self-Test Modal */}
+      {showPaywall && (
+        <PaywallModal
+          t={t}
+          remaining={remainingAdvancedQuota()}
+          onMonthly={() => handlePurchase('monthly')}
+          onYearly={() => handlePurchase('yearly')}
+          onRestore={handleRestore}
+          onClose={() => setShowPaywall(false)}
+        />
+      )}
+
       {showDiagnosticModal && (
         <DiagnosticModal
           t={t}
