@@ -36,7 +36,7 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { analyzeImageTexture, calculateExtractionMetrics, TextureAnalysis } from './algorithms/utils';
 import { translations, Language } from './i18n/translations';
 import { isAdvancedSelection, hasAdvancedQuota, recordAdvancedUse, remainingAdvancedQuota, setSubscribed } from './utils/entitlement';
-import { purchasePlan, restorePurchases, Plan } from './utils/purchase';
+import { purchasePlan, restorePurchases, syncSubscription, Plan } from './utils/purchase';
 import PaywallModal from './components/PaywallModal';
 import { createZip, ZipEntry } from './utils/zip';
 import { generateCertificateCard, CertificateData } from './utils/certificate';
@@ -354,6 +354,11 @@ export default function App() {
 
   // Exhaustive Extract: Automatically tests all 6 algorithms
   const [showPaywall, setShowPaywall] = useState(false);
+
+  // The store is the source of truth for subscriptions on native iOS
+  useEffect(() => {
+    syncSubscription().then(pro => { if (pro !== null) setSubscribed(pro); }).catch(() => undefined);
+  }, []);
 
   // Gate an advanced operation: allowed with quota or subscription, otherwise shows the paywall
   const requireAdvanced = (): boolean => {
