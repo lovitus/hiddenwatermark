@@ -98,6 +98,18 @@ body {
   padding-top: 59px;
 }
 
+.ios-native body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 59px;
+  background: var(--bg);
+  z-index: 1000;
+  pointer-events: none;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
