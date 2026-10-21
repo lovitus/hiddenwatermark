@@ -70,6 +70,22 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html {
+  background-color: var(--bg);
+}
+
+html::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--bg);
+  z-index: 1000;
+  pointer-events: none;
+}
+
 body {
   font-family: 'Outfit', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   background-color: var(--bg);
