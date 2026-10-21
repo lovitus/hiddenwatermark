@@ -89,8 +89,13 @@ body {
   min-height: 100vh;
   line-height: 1.5;
   overflow-x: hidden;
-  padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* WebKit reports env(safe-area-inset-top) as 0 in portrait since iOS 17.5 (WebKit bug 274773),
+   so the native iOS shell reserves the status bar and Dynamic Island height explicitly. */
+.ios-native body {
+  padding-top: 59px;
 }
 
 /* Scrollbar styling */
