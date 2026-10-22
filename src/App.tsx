@@ -31,7 +31,6 @@ import {
   Moon,
   X
 } from 'lucide-react';
-import { Share } from '@capacitor/share';
 import { Toast } from '@capacitor/toast';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { analyzeImageTexture, calculateExtractionMetrics, TextureAnalysis } from './algorithms/utils';
@@ -39,6 +38,7 @@ import { translations, Language } from './i18n/translations';
 import { isAdvancedSelection, hasAdvancedQuota, isSubscribed, recordAdvancedUse, remainingAdvancedQuota, setSubscribed } from './utils/entitlement';
 import { purchasePlan, restorePurchases, syncSubscription, Plan } from './utils/purchase';
 import PaywallModal from './components/PaywallModal';
+import { shareImage } from './utils/share';
 import { createZip, ZipEntry } from './utils/zip';
 import { generateCertificateCard, shortSha256, CertificateData } from './utils/certificate';
 import { runAllAutomatedDiagnostics, TestCaseResult } from './utils/selfTest';
@@ -577,29 +577,10 @@ export default function App() {
   const handleShareOrSave = async () => {
     if (!watermarkedImgUrl) return;
     try {
-      const canShare = await Share.canShare();
-      if (canShare.value) {
-        await Share.share({
-          title: t('shareTitle'),
-          text: t('shareText'),
-          url: watermarkedImgUrl,
-          dialogTitle: t('shareDialogTitle')
-        });
-        showToast(t('shareOpened'), 'success');
-        return;
-      }
+      await shareImage(watermarkedImgUrl, `watermarked_${Date.now()}.png`, t('shareTitle'), t('shareText'));
     } catch (e: any) {
-      if (e.name !== 'AbortError') {
-        console.warn('Share API non-native or cancelled', e);
-      }
+      console.warn('Share cancelled or failed', e);
     }
-
-    // Fallback: Trigger standard download link
-    const link = document.createElement('a');
-    link.href = watermarkedImgUrl;
-    link.download = `watermarked_multi_${Date.now()}.png`;
-    link.click();
-    showToast(t('downloadTriggered'), 'success');
   };
 
   // Native Camera Capture
@@ -2346,11 +2327,7 @@ export default function App() {
               <button
                 onClick={async () => {
                   try {
-                    await Share.share({
-                      title: t('certShareTitle'),
-                      text: t('certShareText'),
-                      url: certImgUrl
-                    });
+                    await shareImage(certImgUrl, `certificate_${Date.now()}.png`, t('certShareTitle'), t('certShareText'));
                   } catch {}
                 }}
                 className="btn-secondary"
