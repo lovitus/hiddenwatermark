@@ -422,7 +422,7 @@ export interface ConfidenceMetric {
   badgeColor: string;
 }
 
-export function calculateExtractionMetrics(extracted: string, expectedText: string = 'Secure Watermark 2026'): ConfidenceMetric {
+export function calculateExtractionMetrics(extracted: string, expectedText: string): ConfidenceMetric {
   if (!extracted) {
     return { similarity: 0, ber: 1.0, badgeKey: 'badgeNotFound', badgeColor: '#ef4444' };
   }

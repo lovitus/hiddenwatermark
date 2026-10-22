@@ -40,7 +40,7 @@ import { isAdvancedSelection, hasAdvancedQuota, isSubscribed, recordAdvancedUse,
 import { purchasePlan, restorePurchases, syncSubscription, Plan } from './utils/purchase';
 import PaywallModal from './components/PaywallModal';
 import { createZip, ZipEntry } from './utils/zip';
-import { generateCertificateCard, CertificateData } from './utils/certificate';
+import { generateCertificateCard, shortSha256, CertificateData } from './utils/certificate';
 import { runAllAutomatedDiagnostics, TestCaseResult } from './utils/selfTest';
 import DiagnosticModal from './components/DiagnosticModal';
 
@@ -181,6 +181,13 @@ const ALGORITHMS = [
   }
 ] as const;
 
+// Random 12-character key (no ambiguous characters), generated on first launch
+const generateSecurityKey = () => {
+  const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
+};
+
 const TAB_HINTS = {
   embed: 'tabEmbedDesc',
   extract: 'tabExtractDesc',
@@ -239,9 +246,11 @@ export default function App() {
   
   // Payload Configuration
   const [payloadType, setPayloadType] = useState<'text' | 'logo'>('text');
-  const [watermarkText, setWatermarkText] = useState('Secure Watermark 2026');
+  const [watermarkText, setWatermarkText] = useState('');
   const [logoImgUrl, setLogoImgUrl] = useState<string | null>(null);
-  const [securityKey, setSecurityKey] = useState('antigravity_safe');
+  // Each device gets its own random key on first launch; the user can replace it
+  const [securityKey, setSecurityKey] = useState(() => localStorage.getItem('hw-security-key') || generateSecurityKey());
+  useEffect(() => { if (securityKey) localStorage.setItem('hw-security-key', securityKey); }, [securityKey]);
   const [strength, setStrength] = useState(25);
 
   // Single vs Batch Mode
@@ -671,6 +680,7 @@ export default function App() {
   // Sequential Batch Embedding Queue
   const handleBatchEmbed = async () => {
     if (batchFiles.length === 0) return;
+    if (payloadType === 'text' && !watermarkText.trim()) { showToast(t('watermarkRequired'), 'error'); return; }
     if (!requireAdvanced()) return;
     setIsProcessing(true);
     setStatusMsg(t('batchStatus'));
@@ -767,7 +777,7 @@ export default function App() {
         confidenceScore: t(metrics.badgeKey, { s: metrics.similarity, b: metrics.ber }),
         berScore: metrics.ber.toFixed(3),
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        securityKeyHash: securityKey ? Array.from(securityKey).reduce((acc, char) => ((acc << 5) - acc) + char.charCodeAt(0), 0).toString(16).toUpperCase() : 'DEFAULT_NONE',
+        securityKeyHash: await shortSha256(securityKey),
         language: lang
       });
 
@@ -806,6 +816,7 @@ export default function App() {
   // Core action: Embed Watermark (Sequentially embeds all selected algorithms with live progress)
   const handleEmbed = async () => {
     if (!sourceImgUrl) return;
+    if (payloadType === 'text' && !watermarkText.trim()) { showToast(t('watermarkRequired'), 'error'); return; }
     if (selectedAlgos.length === 0) {
       showToast(t('selectOneAlgoEmbed'), 'error');
       return;

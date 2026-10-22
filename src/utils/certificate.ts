@@ -4,6 +4,12 @@
  */
 import { translations } from '../i18n/translations';
 
+// First 16 hex chars of SHA-256(text), uppercased; used to show a key fingerprint without revealing the key
+export async function shortSha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('').slice(0, 16).toUpperCase();
+}
+
 export interface CertificateData {
   certId: string;
   thumbnailUrl: string;
