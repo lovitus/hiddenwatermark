@@ -35,7 +35,7 @@ import { Toast } from '@capacitor/toast';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { analyzeImageTexture, calculateExtractionMetrics, TextureAnalysis } from './algorithms/utils';
 import { translations, Language } from './i18n/translations';
-import { isAdvancedSelection, hasAdvancedQuota, recordAdvancedUse, remainingAdvancedQuota, setSubscribed } from './utils/entitlement';
+import { isAdvancedSelection, hasAdvancedQuota, isSubscribed, recordAdvancedUse, remainingAdvancedQuota, setSubscribed } from './utils/entitlement';
 import { purchasePlan, restorePurchases, syncSubscription, Plan } from './utils/purchase';
 import PaywallModal from './components/PaywallModal';
 import { createZip, ZipEntry } from './utils/zip';
@@ -1068,6 +1068,10 @@ export default function App() {
           <span className="brand-tag">DEFENSE · WATERMARK</span>
         </div>
         <div className="chip-group">
+          <button className="chip-btn" onClick={() => setShowPaywall(true)} title={t('paywallTitle')} aria-label={t('paywallTitle')}>
+            <Sparkles size={14} />
+            <span>{isSubscribed() ? t('proActive') : t('upgradeBtn')}</span>
+          </button>
           <button className="icon-btn" onClick={handleRunDiagnosticSelfTest} title={t('runSelfTestBtn')} aria-label={t('runSelfTestBtn')}>
             <FlaskConical size={17} />
           </button>
