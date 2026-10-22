@@ -85,7 +85,7 @@ export default function DiagnosticModal({ t, running, progress, results, onRerun
             {running ? <div className="spinner" /> : <RefreshCw size={16} />}
             <span>{t('reRunSelfTestBtn')}</span>
           </button>
-          <button className="btn-primary diag-secondary" onClick={onClose}>
+          <button className="btn-secondary" onClick={onClose}>
             <span>{t('closeSelfTestBtn')}</span>
           </button>
         </footer>

@@ -28,7 +28,8 @@ import {
   QrCode,
   FlaskConical,
   Sun,
-  Moon
+  Moon,
+  X
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Toast } from '@capacitor/toast';
@@ -42,6 +43,9 @@ import { createZip, ZipEntry } from './utils/zip';
 import { generateCertificateCard, CertificateData } from './utils/certificate';
 import { runAllAutomatedDiagnostics, TestCaseResult } from './utils/selfTest';
 import DiagnosticModal from './components/DiagnosticModal';
+
+// Longest edge used for watermarking and extraction; both sides must match or the watermark cannot be read back
+export const MAX_PROCESS_SIZE = 2048;
 
 // Vite inlined worker import
 import WatermarkWorker from './workers/watermark.worker?worker&inline';
@@ -98,8 +102,6 @@ function ImageCompareSlider({ originalUrl, watermarkedUrl, leftLabel, rightLabel
     <div 
       ref={containerRef}
       className="compare-slider-container"
-      onMouseDown={onMouseDown}
-      onTouchStart={onTouchStart}
     >
       <span className="compare-badge left">{leftLabel}</span>
       <span className="compare-badge right">{rightLabel}</span>
@@ -111,7 +113,7 @@ function ImageCompareSlider({ originalUrl, watermarkedUrl, leftLabel, rightLabel
       </div>
 
       <div className="compare-splitter-bar" style={{ left: `${sliderPos}%` }}>
-        <div className="compare-splitter-handle">↔</div>
+        <div className="compare-splitter-handle" onMouseDown={onMouseDown} onTouchStart={onTouchStart}>↔</div>
       </div>
     </div>
   );
@@ -494,14 +496,14 @@ export default function App() {
     });
   };
 
-  // Utility: Extract ImageData from Image URL with automatic size limiting (max 1024px) & texture analysis
+  // Utility: Extract ImageData from Image URL with automatic size limiting (max MAX_PROCESS_SIZE px) & texture analysis
   const getImageDataFromUrl = (url: string): Promise<ImageData> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
         const origW = img.naturalWidth;
         const origH = img.naturalHeight;
-        const MAX_SIZE = 1024;
+        const MAX_SIZE = MAX_PROCESS_SIZE;
         let width = origW;
         let height = origH;
 
@@ -608,7 +610,7 @@ export default function App() {
         const img = new Image();
         img.src = photo.dataUrl;
         await new Promise(r => { img.onload = r; });
-        setImageMeta({ origW: img.naturalWidth, origH: img.naturalHeight, procW: Math.min(1024, img.naturalWidth), procH: Math.min(1024, img.naturalHeight) });
+        setImageMeta({ origW: img.naturalWidth, origH: img.naturalHeight, procW: Math.min(MAX_PROCESS_SIZE, img.naturalWidth), procH: Math.min(MAX_PROCESS_SIZE, img.naturalHeight) });
         showToast(t('cameraLoaded'), 'success');
       }
     } catch (err: any) {
@@ -1601,8 +1603,8 @@ export default function App() {
                 <a 
                   href={watermarkedImgUrl} 
                   download={`watermarked_multi_${Date.now()}.png`}
-                  className="btn-primary" 
-                  style={{ width: '52px', padding: 0, justifyContent: 'center', background: 'var(--fill)' }}
+                  className="btn-secondary" 
+                  style={{ width: '52px', padding: 0, justifyContent: 'center' }}
                   title={t('forceDownloadTitle')}
                 >
                   <Download size={18} />
@@ -1702,12 +1704,12 @@ export default function App() {
           </div>
 
           {watermarkedImgUrl && (
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
               <button 
                 className="btn-primary" 
                 onClick={handleExtract}
                 disabled={isProcessing}
-                style={{ flex: 1 }}
+                style={{ flex: '1 1 140px', minWidth: 0 }}
               >
                 {isProcessing ? <div className="spinner" /> : <Unlock size={18} />}
                 <span>{isProcessing ? t('extractProcessing') : t('startExtractBtn')}</span>
@@ -1716,7 +1718,7 @@ export default function App() {
                 className="btn-primary" 
                 onClick={handleExhaustiveExtract}
                 disabled={isProcessing}
-                style={{ flex: 1.2, background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 4px 20px rgba(217, 70, 239, 0.3)' }}
+                style={{ flex: '1.2 1 160px', minWidth: 0, background: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)', boxShadow: '0 4px 20px rgba(217, 70, 239, 0.3)' }}
               >
                 {isProcessing ? <div className="spinner" /> : <Search size={18} />}
                 <span>{t('exhaustiveScanBtn')}</span>
@@ -2313,11 +2315,8 @@ export default function App() {
                 <Award size={20} />
                 <span>{t('certModalTitle')}</span>
               </h3>
-              <button 
-                onClick={() => setShowCertModal(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '1.5rem', cursor: 'pointer', padding: '0 8px' }}
-              >
-                ×
+              <button className="icon-close" onClick={() => setShowCertModal(false)} aria-label={t('closeCertBtn')}>
+                <X size={18} />
               </button>
             </div>
 
@@ -2345,8 +2344,8 @@ export default function App() {
                     });
                   } catch {}
                 }}
-                className="btn-primary"
-                style={{ flex: 1, background: 'var(--fill)' }}
+                className="btn-secondary"
+                style={{ flex: 1 }}
               >
                 <Share2 size={18} />
                 <span>{t('shareCertBtn')}</span>
@@ -2430,7 +2429,7 @@ export default function App() {
 
               <div style={{ textAlign: 'right', marginTop: '8px' }}>
                 <button 
-                  className="btn-primary" 
+                  className="btn-secondary" 
                   onClick={() => setShowForensicModal(false)}
                   style={{ padding: '8px 22px', fontSize: '0.85rem' }}
                 >

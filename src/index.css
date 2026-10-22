@@ -72,6 +72,8 @@
 
 html {
   background-color: var(--bg);
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 
@@ -89,6 +91,7 @@ body {
   min-height: 100vh;
   line-height: 1.5;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -674,7 +677,7 @@ body {
   border-radius: 12px;
   overflow: hidden;
   user-select: none;
-  touch-action: none;
+  touch-action: pan-y;
   background: #000000;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
@@ -725,8 +728,10 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 34px;
-  height: 34px;
+  touch-action: none;
+  cursor: ew-resize;
+  width: 44px;
+  height: 44px;
   background: #6366f1;
   border: 2px solid #ffffff;
   border-radius: 50%;
@@ -772,6 +777,7 @@ body {
   padding: 12px 16px;
   margin-top: 10px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -779,6 +785,8 @@ body {
 
 .texture-info {
   display: flex;
+  flex: 1 1 180px;
+  min-width: 0;
   flex-direction: column;
   gap: 2px;
 }
@@ -795,6 +803,7 @@ body {
 .texture-desc {
   font-size: 0.75rem;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .btn-apply-strength {
@@ -862,6 +871,7 @@ body {
   color: var(--accent-text);
 }
 
+.icon-close,
 .diag-close {
   width: 32px;
   height: 32px;
@@ -870,14 +880,30 @@ body {
   background: var(--fill);
   border: none;
   border-radius: 10px;
-  color: var(--muted);
+  color: var(--text);
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
 }
 
+.icon-close:hover,
 .diag-close:hover {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/* Secondary actions: readable in both themes (primary text is white, so override it) */
+.btn-secondary {
+  width: auto;
   background: var(--fill);
   color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: none;
 }
 
 .diag-desc {
@@ -1046,10 +1072,8 @@ body {
   font-size: 0.9rem;
 }
 
-.diag-footer .diag-secondary {
+.diag-footer .btn-secondary {
   flex: 0 0 120px;
-  background: var(--fill);
-  box-shadow: none;
 }
 
 @keyframes diag-fade {
