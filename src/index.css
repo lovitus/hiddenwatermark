@@ -691,20 +691,12 @@ body {
   pointer-events: none;
 }
 
-.compare-right-wrapper {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  overflow: hidden;
-  width: 50%;
-  pointer-events: none;
-}
 
-.compare-right-wrapper .compare-img-right {
+
+.compare-img-right {
   position: absolute;
   top: 0;
-  right: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   max-height: none;

@@ -108,9 +108,7 @@ function ImageCompareSlider({ originalUrl, watermarkedUrl, leftLabel, rightLabel
 
       <img src={originalUrl} className="compare-img-left" alt="Original" />
 
-      <div className="compare-right-wrapper" style={{ width: `${100 - sliderPos}%` }}>
-        <img src={watermarkedUrl} className="compare-img-right" alt="Watermarked" />
-      </div>
+      <img src={watermarkedUrl} className="compare-img-right" style={{ clipPath: `inset(0 0 0 ${sliderPos}%)` }} alt="Watermarked" />
 
       <div className="compare-splitter-bar" style={{ left: `${sliderPos}%` }}>
         <div className="compare-splitter-handle" onMouseDown={onMouseDown} onTouchStart={onTouchStart}>↔</div>
