@@ -596,7 +596,7 @@ export default function App() {
   const handleShareOrSave = async () => {
     if (!watermarkedImgUrl) return;
     try {
-      await shareImage(watermarkedImgUrl, `watermarked_${Date.now()}.png`, t('shareTitle'), t('shareText'));
+      await shareImage(watermarkedImgUrl, `watermarked_${Date.now()}`, t('shareTitle'), t('shareText'));
     } catch (e: any) {
       console.warn('Share cancelled or failed', e);
     }
@@ -2366,7 +2366,7 @@ export default function App() {
 
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
-                onClick={() => shareImage(certImgUrl, `certificate_${Date.now()}.png`, t('certShareTitle'), t('certShareText')).catch(() => undefined)}
+                onClick={() => shareImage(certImgUrl, `certificate_${Date.now()}`, t('certShareTitle'), t('certShareText')).catch(() => undefined)}
                 className="btn-primary"
                 style={{ flex: 1, background: 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)', color: '#000000', fontWeight: 800 }}
               >
@@ -2376,7 +2376,7 @@ export default function App() {
               <button
                 onClick={async () => {
                   try {
-                    await shareImage(certImgUrl, `certificate_${Date.now()}.png`, t('certShareTitle'), t('certShareText'));
+                    await shareImage(certImgUrl, `certificate_${Date.now()}`, t('certShareTitle'), t('certShareText'));
                   } catch {}
                 }}
                 className="btn-secondary"
