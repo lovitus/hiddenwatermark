@@ -29,23 +29,23 @@ import {
   FlaskConical,
   Sun,
   Moon,
-  X
+  X,
+  Settings
 } from 'lucide-react';
 import { Toast } from '@capacitor/toast';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { analyzeImageTexture, calculateExtractionMetrics, TextureAnalysis } from './algorithms/utils';
 import { translations, Language } from './i18n/translations';
-import { isAdvancedSelection, hasAdvancedQuota, isSubscribed, recordAdvancedUse, remainingAdvancedQuota, setSubscribed } from './utils/entitlement';
-import { purchasePlan, restorePurchases, syncSubscription, Plan } from './utils/purchase';
+import { isAdvancedSelection, hasAdvancedQuota, recordAdvancedUse, remainingAdvancedQuota, setSubscribed } from './utils/entitlement';
+import { currentSubscription, watchSubscription, loadPlans, purchasePlan, restorePurchases, Plan, PlanInfo, SubscriptionState } from './utils/purchase';
+import { MAX_EXTRACT_SIZE, OutputSettings, loadOutputSettings, saveOutputSettings, encodeImageData, pickNativeImages, blobToDataUrl } from './utils/image';
 import PaywallModal from './components/PaywallModal';
+import OutputSettingsModal from './components/OutputSettingsModal';
 import { shareImage } from './utils/share';
 import { createZip, ZipEntry } from './utils/zip';
 import { generateCertificateCard, shortSha256, CertificateData } from './utils/certificate';
 import { runAllAutomatedDiagnostics, TestCaseResult } from './utils/selfTest';
 import DiagnosticModal from './components/DiagnosticModal';
-
-// Longest edge used for watermarking and extraction; both sides must match or the watermark cannot be read back
-export const MAX_PROCESS_SIZE = 2048;
 
 // Vite inlined worker import
 import WatermarkWorker from './workers/watermark.worker?worker&inline';
@@ -363,35 +363,64 @@ export default function App() {
 
   // Exhaustive Extract: Automatically tests all 6 algorithms
   const [showPaywall, setShowPaywall] = useState(false);
+  const [subState, setSubState] = useState<SubscriptionState>({ pro: false, plan: null });
+  const [plans, setPlans] = useState<PlanInfo[]>([]);
+  const [purchaseBusy, setPurchaseBusy] = useState(false);
+  const [outputSettings, setOutputSettings] = useState<OutputSettings>(loadOutputSettings);
+  const [showOutputSettings, setShowOutputSettings] = useState(false);
 
-  // The store is the source of truth for subscriptions on native iOS
+  // The store is the source of truth on native iOS; updates arrive on purchase, renewal and restore
   useEffect(() => {
-    syncSubscription().then(pro => { if (pro !== null) setSubscribed(pro); }).catch(() => undefined);
+    const apply = (state: SubscriptionState) => { setSubState(state); setSubscribed(state.pro); };
+    currentSubscription().then(state => { if (state) apply(state); }).catch(() => undefined);
+    watchSubscription(apply).catch(() => undefined);
   }, []);
+  useEffect(() => { saveOutputSettings(outputSettings); }, [outputSettings]);
 
   // Gate an advanced operation: allowed with quota or subscription, otherwise shows the paywall
   const requireAdvanced = (): boolean => {
     if (hasAdvancedQuota()) return true;
-    setShowPaywall(true);
+    openPaywall();
     return false;
   };
 
+  const openPaywall = () => {
+    setShowPaywall(true);
+    loadPlans().then(setPlans).catch(() => setPlans([]));
+  };
+
+  // One purchase at a time: the sheet cannot be opened twice by repeated taps
   const handlePurchase = async (plan: Plan) => {
+    if (purchaseBusy) return;
+    setPurchaseBusy(true);
     try {
-      const ok = await purchasePlan(plan);
-      if (ok) { setSubscribed(true); setShowPaywall(false); showToast(t('paywallSubscribed'), 'success'); }
-    } catch {
-      showToast(t('paywallNotConnected'), 'error');
+      const state = await purchasePlan(plan);
+      if (state) {
+        setSubState(state);
+        setSubscribed(state.pro);
+        setShowPaywall(false);
+        showToast(t('paywallSubscribed'), 'success');
+      }
+    } catch (err: any) {
+      showToast(`${t('paywallNotConnected')} (${err?.message ?? ''})`, 'error');
+    } finally {
+      setPurchaseBusy(false);
     }
   };
 
   const handleRestore = async () => {
+    if (purchaseBusy) return;
+    setPurchaseBusy(true);
     try {
-      const ok = await restorePurchases();
-      if (ok) { setSubscribed(true); setShowPaywall(false); showToast(t('paywallSubscribed'), 'success'); }
+      const state = await restorePurchases();
+      setSubState(state);
+      setSubscribed(state.pro);
+      if (state.pro) { setShowPaywall(false); showToast(t('paywallSubscribed'), 'success'); }
       else showToast(t('paywallNoPurchase'), 'info');
-    } catch {
-      showToast(t('paywallNotConnected'), 'error');
+    } catch (err: any) {
+      showToast(`${t('paywallNotConnected')} (${err?.message ?? ''})`, 'error');
+    } finally {
+      setPurchaseBusy(false);
     }
   };
 
@@ -503,14 +532,14 @@ export default function App() {
     });
   };
 
-  // Utility: Extract ImageData from Image URL with automatic size limiting (max MAX_PROCESS_SIZE px) & texture analysis
-  const getImageDataFromUrl = (url: string): Promise<ImageData> => {
+  // Utility: Extract ImageData from Image URL, scaled down only when its longest edge exceeds maxSide, and run texture analysis
+  const getImageDataFromUrl = (url: string, maxSide: number = MAX_EXTRACT_SIZE): Promise<ImageData> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
         const origW = img.naturalWidth;
         const origH = img.naturalHeight;
-        const MAX_SIZE = MAX_PROCESS_SIZE;
+        const MAX_SIZE = maxSide;
         let width = origW;
         let height = origH;
 
@@ -562,16 +591,6 @@ export default function App() {
     showToast(t('timestampInserted'), 'success');
   };
 
-  // Utility: Convert ImageData to Base64 URL
-  const imageDataToUrl = (imageData: ImageData): string => {
-    const canvas = document.createElement('canvas');
-    canvas.width = imageData.width;
-    canvas.height = imageData.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return '';
-    ctx.putImageData(imageData, 0, 0);
-    return canvas.toDataURL('image/png');
-  };
 
   // Native share / save handler
   const handleShareOrSave = async () => {
@@ -598,7 +617,7 @@ export default function App() {
         const img = new Image();
         img.src = photo.dataUrl;
         await new Promise(r => { img.onload = r; });
-        setImageMeta({ origW: img.naturalWidth, origH: img.naturalHeight, procW: Math.min(MAX_PROCESS_SIZE, img.naturalWidth), procH: Math.min(MAX_PROCESS_SIZE, img.naturalHeight) });
+        setImageMeta({ origW: img.naturalWidth, origH: img.naturalHeight, procW: Math.min(outputSettings.maxSide, img.naturalWidth), procH: Math.min(outputSettings.maxSide, img.naturalHeight) });
         showToast(t('cameraLoaded'), 'success');
       }
     } catch (err: any) {
@@ -639,23 +658,65 @@ export default function App() {
   };
 
   // Batch Image Upload
-  const handleBatchUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    Array.from(files).forEach((file, index) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const url = ev.target?.result as string;
-        setBatchFiles(prev => [...prev, {
-          id: `BATCH-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 5)}`,
-          name: file.name,
-          origUrl: url,
-          status: 'waiting'
-        }]);
-      };
-      reader.readAsDataURL(file);
-    });
-    showToast(t('batchQueued', { n: files.length }), 'info');
+  const addBatchImages = (items: { name: string; url: string }[]) => {
+    if (items.length === 0) return;
+    setBatchFiles(prev => [...prev, ...items.map((item, index) => ({
+      id: `BATCH-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 5)}`,
+      name: item.name,
+      origUrl: item.url,
+      status: 'waiting' as const
+    }))]);
+    showToast(t('batchQueued', { n: items.length }), 'info');
+  };
+
+  const handleBatchUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    const items = await Promise.all(files.map(async file => ({ name: file.name, url: await blobToDataUrl(file) })));
+    addBatchImages(items);
+  };
+
+  // Native photo library (multi-select) on iOS; falls back to the file input on the web
+  const openBatchPicker = async () => {
+    try {
+      const urls = await pickNativeImages(true);
+      if (urls === null) batchInputRef.current?.click();
+      else addBatchImages(urls.map((url, i) => ({ name: `photo-${i + 1}`, url })));
+    } catch {
+      showToast(t('readFileFailed'), 'error');
+    }
+  };
+
+  const applySourceImage = (url: string) => {
+    setSourceImgUrl(url);
+    setWatermarkedImgUrl(null);
+    showToast(t('imageLoadedExtract'), 'info');
+  };
+
+  const applyExtractImage = (url: string) => {
+    setWatermarkedImgUrl(url);
+    setExtractionResults({});
+    showToast(t('detectImageLoaded'), 'info');
+  };
+
+  const openSourcePicker = async () => {
+    try {
+      const urls = await pickNativeImages(false);
+      if (urls === null) fileInputRef.current?.click();
+      else if (urls[0]) applySourceImage(urls[0]);
+    } catch {
+      showToast(t('readFileFailed'), 'error');
+    }
+  };
+
+  const openExtractPicker = async () => {
+    try {
+      const urls = await pickNativeImages(false);
+      if (urls === null) extractInputRef.current?.click();
+      else if (urls[0]) applyExtractImage(urls[0]);
+    } catch {
+      showToast(t('readFileFailed'), 'error');
+    }
   };
 
   // Sequential Batch Embedding Queue
@@ -672,7 +733,7 @@ export default function App() {
       setProgressInfo({ step: i + 1, total: batchFiles.length, algo: item.name });
 
       try {
-        const imgData = await getImageDataFromUrl(item.origUrl);
+        const imgData = await getImageDataFromUrl(item.origUrl, outputSettings.maxSide);
         const res = await runWorkerTask({
           type: 'embed',
           pixels: imgData.data.buffer,
@@ -684,13 +745,7 @@ export default function App() {
           strength
         });
 
-        const canvas = document.createElement('canvas');
-        canvas.width = imgData.width;
-        canvas.height = imgData.height;
-        const ctx = canvas.getContext('2d')!;
-        const outImgData = new ImageData(new Uint8ClampedArray(res.pixels), imgData.width, imgData.height);
-        ctx.putImageData(outImgData, 0, 0);
-        const resultUrl = canvas.toDataURL('image/png');
+        const resultUrl = encodeImageData(new ImageData(new Uint8ClampedArray(res.pixels), imgData.width, imgData.height), outputSettings);
 
         setBatchFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'done', resultUrl } : f));
       } catch {
@@ -771,27 +826,17 @@ export default function App() {
   };
 
   // Image upload handler
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'source' | 'extract') => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'source' | 'extract') => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const url = event.target?.result as string;
-      if (target === 'source') {
-        setSourceImgUrl(url);
-        setWatermarkedImgUrl(null);
-        showToast(t('imageLoadedExtract'), 'info');
-      } else {
-        setWatermarkedImgUrl(url);
-        setExtractionResults({});
-        showToast(t('detectImageLoaded'), 'info');
-      }
-    };
-    reader.onerror = () => {
+    try {
+      const url = await blobToDataUrl(file);
+      if (target === 'source') applySourceImage(url);
+      else applyExtractImage(url);
+    } catch {
       showToast(t('readFileFailed'), 'error');
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   // Core action: Embed Watermark (Sequentially embeds all selected algorithms with live progress)
@@ -808,7 +853,7 @@ export default function App() {
     setStatusMsg(t('embedStatus', { algos: selectedAlgos.join(' -> ') }));
 
     try {
-      const imgData = await getImageDataFromUrl(sourceImgUrl);
+      const imgData = await getImageDataFromUrl(sourceImgUrl, outputSettings.maxSide);
       const res = await runWorkerTask(
         {
           type: 'embed',
@@ -831,7 +876,7 @@ export default function App() {
       );
 
       const outputImgData = new ImageData(new Uint8ClampedArray(res.pixels), imgData.width, imgData.height);
-      const finalUrl = imageDataToUrl(outputImgData);
+      const finalUrl = encodeImageData(outputImgData, outputSettings);
       setWatermarkedImgUrl(finalUrl);
       if (isAdvancedSelection(selectedAlgos)) recordAdvancedUse();
       showToast(t('embedSuccessToast'), 'success');
@@ -1060,9 +1105,9 @@ export default function App() {
           <span className="brand-tag">DEFENSE · WATERMARK</span>
         </div>
         <div className="chip-group">
-          <button className="chip-btn" onClick={() => setShowPaywall(true)} title={t('paywallTitle')} aria-label={t('paywallTitle')}>
+          <button className="chip-btn" onClick={openPaywall} title={t('paywallTitle')} aria-label={t('paywallTitle')}>
             <Sparkles size={14} />
-            <span>{isSubscribed() ? t('proActive') : t('upgradeBtn')}</span>
+            <span>{subState.pro ? t('proActive') : t('upgradeBtn')}</span>
           </button>
           <button className="icon-btn" onClick={handleRunDiagnosticSelfTest} title={t('runSelfTestBtn')} aria-label={t('runSelfTestBtn')}>
             <FlaskConical size={17} />
@@ -1135,6 +1180,9 @@ export default function App() {
                 <span>{t('batchMode')}</span>
               </button>
             </div>
+            <button className="icon-btn" onClick={() => setShowOutputSettings(true)} title={t('outputSettings')} aria-label={t('outputSettings')}>
+              <Settings size={17} />
+            </button>
             <button className="chip-btn" onClick={handleCameraCapture}>
               <CameraIcon size={14} />
               <span>{t('cameraShotBtn')}</span>
@@ -1146,7 +1194,7 @@ export default function App() {
             <div className="form-group">
               <StepTitle n="01">{t('uploadSourceTitle')}</StepTitle>
               {!sourceImgUrl ? (
-                <div className="upload-zone" onClick={() => fileInputRef.current?.click()}>
+                <div className="upload-zone" onClick={openSourcePicker}>
                   <ImageIcon size={40} className="upload-icon" />
                   <span className="upload-text">{t('uploadClickText')}</span>
                   <span className="upload-hint">{t('uploadHintText')}</span>
@@ -1196,7 +1244,7 @@ export default function App() {
 
               <div 
                 className="upload-zone" 
-                onClick={() => batchInputRef.current?.click()}
+                onClick={openBatchPicker}
                 style={{ padding: '24px 16px', marginBottom: '12px' }}
               >
                 <FolderArchive size={36} className="upload-icon" style={{ color: 'var(--accent-text)' }} />
@@ -1590,15 +1638,6 @@ export default function App() {
                   <Share2 size={18} />
                   <span>{t('saveShareBtn')}</span>
                 </button>
-                <a 
-                  href={watermarkedImgUrl} 
-                  download={`watermarked_multi_${Date.now()}.png`}
-                  className="btn-secondary" 
-                  style={{ width: '52px', padding: 0, justifyContent: 'center' }}
-                  title={t('forceDownloadTitle')}
-                >
-                  <Download size={18} />
-                </a>
               </div>
             </div>
           )}
@@ -1673,7 +1712,7 @@ export default function App() {
           <div className="form-group">
             <StepTitle n="02">{t('uploadExtractTitle')}</StepTitle>
             {!watermarkedImgUrl ? (
-              <div className="upload-zone" onClick={() => extractInputRef.current?.click()}>
+              <div className="upload-zone" onClick={openExtractPicker}>
                 <ImageIcon size={40} className="upload-icon" />
                 <span className="upload-text">{t('uploadExtractClickText')}</span>
                 <span className="upload-hint">{t('uploadExtractHintText')}</span>
@@ -2254,12 +2293,23 @@ export default function App() {
       )}
 
       {/* Automated Diagnostic Self-Test Modal */}
+      {showOutputSettings && (
+        <OutputSettingsModal
+          t={t}
+          value={outputSettings}
+          onChange={setOutputSettings}
+          onClose={() => setShowOutputSettings(false)}
+        />
+      )}
+
       {showPaywall && (
         <PaywallModal
           t={t}
+          plans={plans}
+          current={subState.plan}
+          busy={purchaseBusy}
           remaining={remainingAdvancedQuota()}
-          onMonthly={() => handlePurchase('monthly')}
-          onYearly={() => handlePurchase('yearly')}
+          onChoose={handlePurchase}
           onRestore={handleRestore}
           onClose={() => setShowPaywall(false)}
         />
@@ -2315,15 +2365,14 @@ export default function App() {
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>
-              <a
-                href={certImgUrl}
-                download={`copyright_certificate_${Date.now()}.png`}
+              <button
+                onClick={() => shareImage(certImgUrl, `certificate_${Date.now()}.png`, t('certShareTitle'), t('certShareText')).catch(() => undefined)}
                 className="btn-primary"
-                style={{ flex: 1, textDecoration: 'none', background: 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)', color: '#000000', fontWeight: 800 }}
+                style={{ flex: 1, background: 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)', color: '#000000', fontWeight: 800 }}
               >
                 <Download size={18} />
                 <span>{t('downloadCertBtn')}</span>
-              </a>
+              </button>
               <button
                 onClick={async () => {
                   try {
